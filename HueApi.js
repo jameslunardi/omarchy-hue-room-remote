@@ -1,0 +1,119 @@
+function parseConfig(text) {
+  var raw = String(text || "").trim()
+  if (!raw) return null
+  try {
+    var parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return null
+    var bridgeIp = String(parsed.bridgeIp || "").trim()
+    var username = String(parsed.username || "").trim()
+    if (!bridgeIp || !username) return null
+    return { bridgeIp: bridgeIp, username: username }
+  } catch (e) {
+    return null
+  }
+}
+
+function curlGet(url) {
+  return ["curl", "-fsS", "--max-time", "5", url]
+}
+
+function curlPutJson(url, body) {
+  return ["curl", "-fsS", "--max-time", "5", "-X", "PUT",
+    "-H", "Content-Type: application/json",
+    "-d", body, url]
+}
+
+function lightsUrl(config) {
+  return "http://" + config.bridgeIp + "/api/" + config.username + "/lights"
+}
+
+function groupsUrl(config) {
+  return "http://" + config.bridgeIp + "/api/" + config.username + "/groups"
+}
+
+function lightStateUrl(config, lightId) {
+  return "http://" + config.bridgeIp + "/api/" + config.username + "/lights/" + lightId + "/state"
+}
+
+function groupActionUrl(config, groupId) {
+  return "http://" + config.bridgeIp + "/api/" + config.username + "/groups/" + groupId + "/action"
+}
+
+function parseJsonObject(text) {
+  var raw = String(text || "").trim()
+  if (!raw) return null
+  try {
+    var parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : null
+  } catch (e) {
+    return null
+  }
+}
+
+function parseLights(text) {
+  var obj = parseJsonObject(text)
+  if (!obj) return []
+  var lights = []
+  for (var id in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+    var light = obj[id]
+    var state = light.state || {}
+    var hasBri = typeof state.bri === "number"
+    var hasCt = typeof state.ct === "number"
+    var hasColor = typeof state.hue === "number" && typeof state.sat === "number"
+    lights.push({
+      id: String(id),
+      name: String(light.name || "Light " + id),
+      on: !!state.on,
+      bri: hasBri ? Math.max(1, Math.min(254, state.bri)) : 0,
+      hasBri: hasBri,
+      ct: hasCt ? Math.max(153, Math.min(500, state.ct)) : 0,
+      hasCt: hasCt,
+      hue: hasColor ? state.hue : 0,
+      sat: hasColor ? state.sat : 0,
+      hasColor: hasColor,
+      pickerOpen: false
+    })
+  }
+  lights.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  return lights
+}
+
+function parseGroups(text) {
+  var obj = parseJsonObject(text)
+  if (!obj) return []
+  var groups = []
+  for (var id in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+    var group = obj[id]
+    var type = String(group.type || "")
+    if (type !== "Room" && type !== "Zone") continue
+    groups.push({
+      id: String(id),
+      name: String(group.name || "Group " + id),
+      type: type,
+      on: !!(group.state && group.state.any_on),
+      allOn: !!(group.state && group.state.all_on),
+      lightIds: Array.isArray(group.lights) ? group.lights.map(String) : []
+    })
+  }
+  groups.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  return groups
+}
+
+function lightsById(lights) {
+  var byId = {}
+  for (var i = 0; i < lights.length; i++) {
+    byId[lights[i].id] = lights[i]
+  }
+  return byId
+}
+
+function roomLights(room, byId) {
+  var result = []
+  for (var i = 0; i < room.lightIds.length; i++) {
+    var light = byId[room.lightIds[i]]
+    if (light) result.push(light)
+  }
+  return result
+}

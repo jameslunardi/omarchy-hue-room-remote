@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "philips.hue",
+  "name": "Hue Lights",
+  "version": "1.0.0",
+  "author": "seth",
+  "description": "Toggle Philips Hue rooms and lights from the bar",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Hue Lights",
+    "description": "Toggle Philips Hue rooms and lights",
+    "category": "Smart Home",
+    "allowMultiple": false
+  }
+}
