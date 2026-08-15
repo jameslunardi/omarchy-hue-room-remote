@@ -39,9 +39,31 @@ You can also pass an IP directly: `pair.sh 192.168.1.14`.
 
 ## Syncing lights with the omarchy theme
 
-A theme-set hook (`~/.config/omarchy/hooks/theme-set.d/45-hue.sh`) recolors every
+A theme-set hook (`45-hue.sh`, vendored in `theme-sync/`) recolors every
 room/zone to the active theme's `accent` whenever you run `omarchy theme set`.
 The bar widget picks the change up within its 15 s poll.
+
+### Install
+
+The repo ships everything needed under `theme-sync/`:
+
+```sh
+~/.config/omarchy/plugins/philips.hue/theme-sync/install.sh
+```
+
+This copies `45-hue.sh` to `~/.config/omarchy/hooks/theme-set.d/` (make it
+executable) and writes a default `hue-theme.json` to
+`~/.config/omarchy/settings/` if you don't have one yet. No shell restart is
+needed — the hook is picked up on the next `omarchy theme set`.
+
+To install manually instead:
+
+```sh
+mkdir -p ~/.config/omarchy/hooks/theme-set.d ~/.config/omarchy/settings
+cp theme-sync/45-hue.sh ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
+chmod +x ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
+cp -n theme-sync/hue-theme.json ~/.config/omarchy/settings/hue-theme.json
+```
 
 Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
 
