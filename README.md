@@ -37,6 +37,37 @@ Press the link button on the Hue bridge when prompted. The script discovers the
 bridge, requests a username, and writes `~/.local/state/omarchy/settings/hue.json`.
 You can also pass an IP directly: `pair.sh 192.168.1.14`.
 
+## Syncing lights with the omarchy theme
+
+A theme-set hook (`~/.config/omarchy/hooks/theme-set.d/45-hue.sh`) recolors every
+room/zone to the active theme's `accent` whenever you run `omarchy theme set`.
+The bar widget picks the change up within its 15 s poll.
+
+Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
+
+```json
+{
+  "enabled": true,
+  "transition": 20,
+  "groups": ["all"],
+  "bri": null,
+  "turnOn": false,
+  "themes": {}
+}
+```
+
+- `transition` — fade length in tenths of a second (20 = 2 s)
+- `groups` — `["all"]`, or a subset of room/zone names to sync
+- `bri` — optional forced brightness (1–254); leave `null` to keep each light's current brightness
+- `turnOn` — `true` to turn lights on when syncing; `false` leaves on/off state untouched
+- `themes` — per-theme hex overrides, e.g. `{ "spacehaven": "#0c8184" }`; themes without an override use their own `accent`
+
+Test the hook without changing your theme:
+
+```sh
+bash ~/.config/omarchy/hooks/theme-set.d/45-hue.sh <theme-slug>
+```
+
 ## Notes
 
 - Speaks to the bridge over plain HTTP on your LAN with the v1 API

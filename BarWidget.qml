@@ -5,6 +5,13 @@ BarWidget {
   id: root
   moduleName: "philips.hue"
 
+  property string currentThemeName: ""
+
+  function syncThemeName() {
+    var p = panelLoader.item
+    if (p) root.currentThemeName = p.currentThemeName || ""
+  }
+
   function injectPanel() {
     var target = panelLoader.item
     if (!target) return
@@ -43,6 +50,11 @@ BarWidget {
     onLoaded: {
       root.injectPanel()
       Qt.callLater(root.injectPanel)
+      var p = panelLoader.item
+      if (p) {
+        root.syncThemeName()
+        p.currentThemeNameChanged.connect(root.syncThemeName)
+      }
     }
   }
 
@@ -51,7 +63,9 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "󰌵"
-    tooltipText: "Hue lights"
+    tooltipText: root.currentThemeName
+      ? "Hue lights · " + root.currentThemeName
+      : "Hue lights"
 
     onPressed: function(b) {
       if (b === Qt.LeftButton) root.togglePanel()
