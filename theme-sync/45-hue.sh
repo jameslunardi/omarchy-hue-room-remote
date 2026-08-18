@@ -15,10 +15,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 0
 fi
 
-accent_color="$(extract_color "accent" || true)"
-accent_color="${accent_color:-}"
-if [[ -z "$accent_color" ]]; then
-  accent_color="${color4:-${primary_foreground:-}}"
+COLORS_FILE="$HOME/.local/state/omarchy/current/theme/colors.toml"
+accent_color=""
+if [[ -f "$COLORS_FILE" ]]; then
+  accent_color="$(grep -E '^accent\s*=' "$COLORS_FILE" | sed 's/^accent\s*=\s*["'\'']\?\([#]*[0-9a-fA-F]\{6\}\)["'\'']\?/\1/' | tr -d '#')"
 fi
 if [[ -z "$accent_color" ]]; then
   log "no accent color available; skipping hue theme sync"
