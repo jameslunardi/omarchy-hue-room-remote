@@ -313,7 +313,155 @@ Panel {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: root.currentThemeName = String(text()).trim()
+    onLoaded: {
+      root.currentThemeName = String(text()).trim()
+      root.syncThemeColor()
+    }
+  }
+
+  property FileView colorsFile: FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.syncThemeColor()
+  }
+
+  property FileView hueConfigFile: FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-theme.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+  }
+
+  property string lastSyncedColor: ""
+
+  function parseTomlAccent(text) {
+    var lines = String(text || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      if (line.indexOf("accent") === 0 && line.indexOf("=") !== -1) {
+        var value = line.split("=")[1].trim()
+        if (value.charAt(0) === '"' && value.charAt(value.length - 1) === '"')
+          value = value.slice(1, -1)
+        if (value.charAt(0) === "#" && value.length === 7)
+          return value.slice(1)
+      }
+    }
+    return ""
+  }
+
+  function parseHueConfig(text) {
+    var raw = String(text || "").trim()
+    if (!raw) return null
+    try {
+      return JSON.parse(raw)
+    } catch (e) {
+      return null
+    }
+  }
+
+  function hexToHsv(hex) {
+    var r = parseInt(hex.slice(0, 2), 16) / 255
+    var g = parseInt(hex.slice(2, 4), 16) / 255
+    var b = parseInt(hex.slice(4, 6), 16) / 255
+    var mx = Math.max(r, g, b)
+    var mn = Math.min(r, g, b)
+    var d = mx - mn
+    var hue01 = 0
+    if (d !== 0) {
+      if (mx === r) hue01 = ((g - b) / d) % 6
+      else if (mx === g) hue01 = (b - r) / d + 2
+      else hue01 = (r - g) / d + 4
+    }
+    hue01 = ((hue01 / 6) % 1 + 1) % 1
+    var sat = mx === 0 ? 0 : d / mx
+    return {
+      hue: Math.round(hue01 * 65535) % 65536,
+      sat: Math.round(sat * 254)
+    }
+  }
+
+  function syncThemeColor() {
+    if (!root.config) return
+
+    var accentHex = root.parseTomlAccent(colorsFile.text())
+    if (!accentHex) return
+    if (accentHex === root.lastSyncedColor) return
+    root.lastSyncedColor = accentHex
+
+    var hueConfig = root.parseHueConfig(hueConfigFile.text())
+    if (hueConfig && hueConfig.enabled === false) return
+
+    var themeSlug = root.currentThemeName
+    var color = accentHex
+    if (hueConfig && hueConfig.themes && hueConfig.themes[themeSlug])
+      color = String(hueConfig.themes[themeSlug]).replace(/^#/, "")
+
+    if (color.length !== 6) return
+
+    var hsv = root.hexToHsv(color)
+    var transition = (hueConfig && hueConfig.transition) ? hueConfig.transition : 20
+    var body = { hue: hsv.hue, sat: hsv.sat, transitiontime: transition }
+
+    if (hueConfig && typeof hueConfig.bri === "number")
+      body.bri = Math.max(1, Math.min(254, hueConfig.bri))
+    if (hueConfig && hueConfig.turnOn)
+      body.on = true
+
+    hueSyncGroupsProc.command = HueApi.curlGet(HueApi.groupsUrl(root.config))
+    hueSyncGroupsProc.pendingBody = JSON.stringify(body)
+    hueSyncGroupsProc.running = true
+  }
+
+  Process {
+    id: hueSyncGroupsProc
+
+    property string pendingBody: ""
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var obj = null
+        try { obj = JSON.parse(text) } catch (e) {}
+        if (!obj) return
+
+        var hueConfig = root.parseHueConfig(hueConfigFile.text())
+        var targets = []
+        for (var id in obj) {
+          if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+          var g = obj[id]
+          var type = String(g.type || "")
+          if (type !== "Room" && type !== "Zone") continue
+
+          var configured = hueConfig ? hueConfig.groups : null
+          if (configured && configured.indexOf("all") === -1) {
+            var name = String(g.name || "").toLowerCase()
+            var found = false
+            for (var i = 0; i < configured.length; i++) {
+              if (name.indexOf(String(configured[i]).toLowerCase()) !== -1) {
+                found = true
+                break
+              }
+            }
+            if (!found) continue
+          }
+          targets.push(id)
+        }
+
+        for (var j = 0; j < targets.length; j++) {
+          hueSyncActionProc.command = HueApi.curlPutJson(
+            HueApi.groupActionUrl(root.config, targets[j]),
+            hueSyncGroupsProc.pendingBody
+          )
+          hueSyncActionProc.running = true
+        }
+      }
+    }
+  }
+
+  Process {
+    id: hueSyncActionProc
   }
 
   Timer {

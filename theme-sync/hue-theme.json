@@ -1,8 +1,0 @@
-{
-  "enabled": true,
-  "transition": 20,
-  "groups": ["all"],
-  "bri": null,
-  "turnOn": false,
-  "themes": {}
-}
