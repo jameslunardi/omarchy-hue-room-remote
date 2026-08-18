@@ -261,14 +261,12 @@ Panel {
 
   function toggleAll(on) {
     if (!root.config || root.lightedRoomCount === 0) return
-    var commands = []
     var rooms = root.lightedRooms()
+    var body = JSON.stringify({ on: on })
     for (var i = 0; i < rooms.length; i++) {
-      commands.push("curl -fsS --max-time 5 -X PUT -H 'Content-Type: application/json' -d '" +
-        JSON.stringify({ on: on }) + "' '" + HueApi.groupActionUrl(root.config, rooms[i].id) + "'")
+      root.runAction(HueApi.curlPutJson(HueApi.groupActionUrl(root.config, rooms[i].id), body))
     }
     root.setAllOn(on)
-    root.runAction(["bash", "-c", commands.join("; ")])
     root.scheduleRefresh()
   }
 

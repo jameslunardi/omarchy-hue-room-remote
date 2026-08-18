@@ -76,6 +76,7 @@ fi
 ok "Got username: $username"
 
 mkdir -p "$STATE_DIR"
+umask 077
 cat > "$STATE_FILE" <<EOF
 {
   "bridgeIp": "$local_ip",
