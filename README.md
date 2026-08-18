@@ -96,6 +96,17 @@ Test the hook without changing your theme:
 bash ~/.config/omarchy/hooks/theme-set.d/45-hue.sh <theme-slug>
 ```
 
+## Remove
+
+```sh
+~/.config/omarchy/plugins/omarchy-philips-hue/cleanup.sh
+omarchy plugin remove omarchy-philips-hue
+```
+
+The cleanup script removes your bridge credentials from
+`~/.local/state/omarchy/settings/hue.json`. Run it before removing the
+plugin so no auth token is left behind.
+
 ## Notes
 
 - Speaks to the bridge over plain HTTP on your LAN with the v1 API
