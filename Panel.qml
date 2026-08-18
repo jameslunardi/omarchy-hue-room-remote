@@ -7,8 +7,8 @@ import "HueApi.js" as HueApi
 
 Panel {
   id: root
-  moduleName: "philips.hue"
-  ipcTarget: "philips.hue"
+  moduleName: "omarchy-philips-hue"
+  ipcTarget: "omarchy-philips-hue"
 
   property var anchorItem: null
   property var hostWidget: null

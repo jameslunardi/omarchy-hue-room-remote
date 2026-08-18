@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "philips.hue",
+  "id": "omarchy-philips-hue",
   "name": "Hue Lights",
   "version": "1.0.0",
   "author": "sethchev",

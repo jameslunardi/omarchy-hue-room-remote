@@ -3,7 +3,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "philips.hue"
+  moduleName: "omarchy-philips-hue"
 
   property string currentThemeName: ""
 

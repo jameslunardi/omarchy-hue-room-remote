@@ -1,9 +1,9 @@
-# philips.hue
+# omarchy-philips-hue
 
 Omarchy / Quickshell bar widget for controlling Philips Hue lights over the bridge's local HTTP API (v1).
 
 <p align="center">
-  <img src="screenshot.png" alt="philips.hue panel screenshot" width="360">
+  <img src="screenshot.png" alt="omarchy-philips-hue panel screenshot" width="360">
 </p>
 
 ## Features
@@ -38,7 +38,7 @@ picks up the new credentials automatically within seconds.
 You can also pair manually:
 
 ```sh
-~/.config/omarchy/plugins/philips.hue/pair.sh
+~/.config/omarchy/plugins/omarchy-philips-hue/pair.sh
 ```
 
 Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
@@ -54,7 +54,7 @@ The bar widget picks the change up within its 15 s poll.
 The repo ships everything needed under `theme-sync/`:
 
 ```sh
-~/.config/omarchy/plugins/philips.hue/theme-sync/install.sh
+~/.config/omarchy/plugins/omarchy-philips-hue/theme-sync/install.sh
 ```
 
 This copies `45-hue.sh` to `~/.config/omarchy/hooks/theme-set.d/` (make it
