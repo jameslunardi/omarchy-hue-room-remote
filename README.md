@@ -24,22 +24,24 @@ Omarchy / Quickshell bar widget for controlling Philips Hue lights over the brid
 ## Install
 
 ```sh
-git clone https://github.com/<your-user>/philips-hue ~/.config/omarchy/plugins/philips.hue
-omarchy plugin enable philips.hue
-omarchy restart shell
+omarchy plugin add https://github.com/sethchev/omarchy-philips-hue.git --enable
 ```
 
 ## Pairing with the bridge
 
-On first run the panel shows "Not paired". Pair it with:
+On first run the bar shows a lightbulb icon. Click it to open the panel, then
+click **Pair with bridge**. This opens a terminal — press the link button on
+your Hue bridge when prompted. The script discovers the bridge, requests a
+username, and writes `~/.local/state/omarchy/settings/hue.json`. The panel
+picks up the new credentials automatically within seconds.
+
+You can also pair manually:
 
 ```sh
 ~/.config/omarchy/plugins/philips.hue/pair.sh
 ```
 
-Press the link button on the Hue bridge when prompted. The script discovers the
-bridge, requests a username, and writes `~/.local/state/omarchy/settings/hue.json`.
-You can also pass an IP directly: `pair.sh 192.168.1.14`.
+Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
 
 ## Syncing lights with the omarchy theme
 

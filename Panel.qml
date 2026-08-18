@@ -469,20 +469,39 @@ Panel {
 
             Text {
               width: parent.width
-              text: "In a terminal, press the link button on the Hue bridge, then run:"
+              text: "Press the link button on your Hue bridge, then click below."
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
             }
 
-            Text {
+            Rectangle {
               width: parent.width
-              text: "~/.config/omarchy/plugins/philips.hue/pair.sh"
-              color: Color.accent
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
+              height: pairButton.implicitHeight + Style.space(16)
+              radius: Style.space(8)
+              color: pairButtonMouse.containsMouse ? Qt.lighter(Color.accent, 1.2) : Color.accent
+
+              Text {
+                id: pairButton
+                anchors.centerIn: parent
+                text: "Pair with bridge"
+                color: "#ffffff"
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+              }
+
+              MouseArea {
+                id: pairButtonMouse
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                hoverEnabled: true
+                onClicked: {
+                  var pairPath = Qt.resolvedUrl("pair.sh").toString().replace("file://", "")
+                  Quickshell.execDetached(["omarchy-launch-terminal", "bash", pairPath])
+                }
+              }
             }
           }
 

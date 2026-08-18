@@ -3,7 +3,8 @@
   "id": "philips.hue",
   "name": "Hue Lights",
   "version": "1.0.0",
-  "author": "seth",
+  "author": "sethchev",
+  "license": "MIT",
   "description": "Toggle Philips Hue rooms and lights from the bar",
   "kinds": [
     "bar-widget"
