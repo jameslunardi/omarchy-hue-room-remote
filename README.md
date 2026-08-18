@@ -19,7 +19,7 @@ Omarchy / Quickshell bar widget for controlling Philips Hue lights over the brid
 ## Requirements
 
 - Arch Linux + Omarchy (Quickshell-based shell)
-- `curl`, `python3` (for pairing), `omarchy-shell`
+- `curl`, `python3` (for the pairing script), `omarchy-shell`
 
 ## Install
 
@@ -45,13 +45,31 @@ Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
 
 ## Syncing lights with the omarchy theme
 
-The plugin automatically syncs every room/zone to the active theme's `accent`
-color whenever you run `omarchy theme set`. This is built into the QML plugin
-itself — no external hooks or scripts required.
+A theme-set hook (`45-hue.sh`, vendored in `theme-sync/`) recolors every
+room/zone to the active theme's `accent` whenever you run `omarchy theme set`.
+The bar widget picks the change up within its 15 s poll.
 
-The plugin watches `~/.local/state/omarchy/current/theme/colors.toml` and
-`~/.local/state/omarchy/current/theme.name` for changes, then sends the accent
-color to your Hue bridge groups.
+### Install
+
+The repo ships everything needed under `theme-sync/`:
+
+```sh
+~/.config/omarchy/plugins/omarchy-philips-hue/theme-sync/install.sh
+```
+
+This copies `45-hue.sh` to `~/.config/omarchy/hooks/theme-set.d/` (make it
+executable) and writes a default `hue-theme.json` to
+`~/.config/omarchy/settings/` if you don't have one yet. No shell restart is
+needed — the hook is picked up on the next `omarchy theme set`.
+
+To install manually instead:
+
+```sh
+mkdir -p ~/.config/omarchy/hooks/theme-set.d ~/.config/omarchy/settings
+cp theme-sync/45-hue.sh ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
+chmod +x ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
+cp -n theme-sync/hue-theme.json ~/.config/omarchy/settings/hue-theme.json
+```
 
 Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
 
@@ -66,12 +84,17 @@ Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
 }
 ```
 
-- `enabled` — `false` to disable theme syncing
 - `transition` — fade length in tenths of a second (20 = 2 s)
 - `groups` — `["all"]`, or a subset of room/zone names to sync
 - `bri` — optional forced brightness (1–254); leave `null` to keep each light's current brightness
 - `turnOn` — `true` to turn lights on when syncing; `false` leaves on/off state untouched
 - `themes` — per-theme hex overrides, e.g. `{ "spacehaven": "#0c8184" }`; themes without an override use their own `accent`
+
+Test the hook without changing your theme:
+
+```sh
+bash ~/.config/omarchy/hooks/theme-set.d/45-hue.sh <theme-slug>
+```
 
 ## Remove
 
