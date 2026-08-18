@@ -3,7 +3,7 @@
 Omarchy / Quickshell bar widget for controlling Philips Hue lights over the bridge's local HTTP API (v1).
 
 <p align="center">
-  <img src="screenshot.png" alt="omarchy-philips-hue panel screenshot" width="360">
+  <img src="preview.png" alt="omarchy-philips-hue panel screenshot" width="360">
 </p>
 
 ## Features
