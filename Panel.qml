@@ -303,7 +303,10 @@ Panel {
     onFileChanged: reload()
     onLoaded: {
       root.config = HueApi.parseConfig(text())
-      if (root.config) root.refresh()
+      if (root.config) {
+        root.refresh()
+        root.syncThemeColor()
+      }
     }
     onLoadFailed: root.config = null
   }
@@ -315,7 +318,8 @@ Panel {
     onFileChanged: reload()
     onLoaded: {
       root.currentThemeName = String(text()).trim()
-      root.syncThemeColor()
+      root.lastSyncedColor = ""
+      hueSyncDebounce.restart()
     }
   }
 
@@ -324,7 +328,7 @@ Panel {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: root.syncThemeColor()
+    onLoaded: hueSyncDebounce.restart()
   }
 
   property FileView hueConfigFile: FileView {
@@ -335,6 +339,12 @@ Panel {
   }
 
   property string lastSyncedColor: ""
+
+  Timer {
+    id: hueSyncDebounce
+    interval: 300
+    onTriggered: root.syncThemeColor()
+  }
 
   function parseTomlAccent(text) {
     var lines = String(text || "").split("\n")
