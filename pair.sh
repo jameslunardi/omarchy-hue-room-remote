@@ -4,12 +4,22 @@ set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
+DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
 
 BRIDGE_IP="${1:-}"
 
 info() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m::\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m::\033[0m %s\n' "$*" >&2; }
+
+valid_ip() {
+  local IFS='.' parts=($1)
+  [[ ${#parts[@]} -eq 4 ]] || return 1
+  for part in "${parts[@]}"; do
+    [[ "$part" =~ ^[0-9]{1,3}$ ]] || return 1
+    (( part >= 0 && part <= 255 )) || return 1
+  done
+}
 
 discover_bridge() {
   local response ip
@@ -45,7 +55,8 @@ except Exception:
 }
 
 if [[ -f "$STATE_FILE" ]] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('bridgeIp') else 1)" "$STATE_FILE" 2>/dev/null; then
-  info "Existing config found at $STATE_FILE. Re-pairing will add a new username."
+  info "Existing config found at $STATE_FILE."
+  info "Re-pairing will replace the current username. The old username will stop working."
 fi
 
 read -r -p "Press the link button on the Hue bridge, then press Enter to continue... " </dev/tty
@@ -65,6 +76,12 @@ if [[ -z "$local_ip" ]]; then
   err "No bridge IP. Aborting."
   exit 1
 fi
+
+if ! valid_ip "$local_ip"; then
+  err "Invalid IP address: $local_ip"
+  exit 1
+fi
+
 info "Using bridge at $local_ip"
 
 info "Requesting access from the bridge..."

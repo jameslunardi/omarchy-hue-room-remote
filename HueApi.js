@@ -1,3 +1,11 @@
+function isValidIp(ip) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)
+}
+
+function isValidId(id) {
+  return /^\d{1,10}$/.test(String(id))
+}
+
 function parseConfig(text) {
   var raw = String(text || "").trim()
   if (!raw) return null
@@ -6,7 +14,8 @@ function parseConfig(text) {
     if (!parsed || typeof parsed !== "object") return null
     var bridgeIp = String(parsed.bridgeIp || "").trim()
     var username = String(parsed.username || "").trim()
-    if (!bridgeIp || !username) return null
+    if (!bridgeIp || !isValidIp(bridgeIp)) return null
+    if (!username || !isValidId(username)) return null
     return { bridgeIp: bridgeIp, username: username }
   } catch (e) {
     return null
@@ -32,11 +41,13 @@ function groupsUrl(config) {
 }
 
 function lightStateUrl(config, lightId) {
-  return "http://" + config.bridgeIp + "/api/" + config.username + "/lights/" + lightId + "/state"
+  return "http://" + config.bridgeIp + "/api/" + config.username
+    + "/lights/" + encodeURIComponent(lightId) + "/state"
 }
 
 function groupActionUrl(config, groupId) {
-  return "http://" + config.bridgeIp + "/api/" + config.username + "/groups/" + groupId + "/action"
+  return "http://" + config.bridgeIp + "/api/" + config.username
+    + "/groups/" + encodeURIComponent(groupId) + "/action"
 }
 
 function parseJsonObject(text) {
@@ -99,14 +110,6 @@ function parseGroups(text) {
   }
   groups.sort(function(a, b) { return a.name.localeCompare(b.name) })
   return groups
-}
-
-function lightsById(lights) {
-  var byId = {}
-  for (var i = 0; i < lights.length; i++) {
-    byId[lights[i].id] = lights[i]
-  }
-  return byId
 }
 
 function roomLights(room, byId) {

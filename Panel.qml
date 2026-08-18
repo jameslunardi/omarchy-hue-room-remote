@@ -23,12 +23,12 @@ Panel {
   property int pendingFetches: 0
   property bool loading: false
   property bool lastFetchFailed: false
-  property var pendingAction: null
+  property var actionQueue: []
 
   readonly property int roomCount: root.roomsWithLights.length
   readonly property int lightTotal: root.lightsTotal()
   readonly property int lightedRoomCount: root.lightedRooms().length
-  readonly property bool allLightsOn: root.lightedRoomCount > 0 && root.lightedRooms().every(function(room) { return room.on })
+  readonly property bool allLightsOn: root.computeAllLightsOn()
 
   readonly property string statusText: {
     if (root.config === null) return "Not paired"
@@ -36,6 +36,15 @@ Panel {
     if (root.loading) return "Loading…"
     var roomLabel = root.roomCount + " room" + (root.roomCount === 1 ? "" : "s")
     return roomLabel + " · " + root.lightTotal + " light" + (root.lightTotal === 1 ? "" : "s")
+  }
+
+  function computeAllLightsOn() {
+    if (root.lightedRoomCount === 0) return false
+    var rooms = root.lightedRooms()
+    for (var i = 0; i < rooms.length; i++) {
+      if (!rooms[i].on) return false
+    }
+    return true
   }
 
   function lightedRooms() {
@@ -284,11 +293,15 @@ Panel {
   }
 
   function runAction(command) {
-    if (actionProc.running) {
-      root.pendingAction = command
-      return
-    }
-    actionProc.command = command
+    root.actionQueue.push(command)
+    drainActionQueue()
+  }
+
+  function drainActionQueue() {
+    if (actionProc.running) return
+    if (root.actionQueue.length === 0) return
+    var next = root.actionQueue.shift()
+    actionProc.command = next
     actionProc.running = true
   }
 
@@ -355,6 +368,9 @@ Panel {
         root.finishFetch(true)
       }
     }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.finishFetch(false)
+    }
   }
 
   Process {
@@ -366,16 +382,15 @@ Panel {
         root.finishFetch(true)
       }
     }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.finishFetch(false)
+    }
   }
 
   Process {
     id: actionProc
     onExited: function(exitCode) {
-      if (root.pendingAction) {
-        var command = root.pendingAction
-        root.pendingAction = null
-        root.runAction(command)
-      }
+      root.drainActionQueue()
     }
   }
 
@@ -579,7 +594,7 @@ Panel {
                   model: modelData.lights
 
                   Column {
-                    id: lightRow
+                    id: roomLightRow
                     required property var modelData
                     width: parent.width
                     spacing: Style.space(2)
@@ -639,65 +654,13 @@ Panel {
                       }
                     }
 
-                    Item {
-                      id: colorPicker
-                      visible: modelData.on && modelData.hasColor && modelData.pickerOpen
-                      width: Style.space(180)
-                      height: Style.space(180)
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      property real dragHue: modelData.hue
-                      property real dragSat: modelData.sat
-                      property bool picking: false
-
-                      Image {
-                        anchors.fill: parent
-                        source: Qt.resolvedUrl("hsv_wheel.png")
-                        fillMode: Image.Stretch
-                        smooth: true
-                      }
-
-                      Rectangle {
-                        width: 12
-                        height: 12
-                        radius: 6
-                        border.color: "#ffffff"
-                        border.width: 2
-                        color: "transparent"
-                        x: colorPicker.width / 2
-                           + Math.cos(-Math.PI / 2 + (colorPicker.dragHue / 65535) * 2 * Math.PI)
-                             * (colorPicker.dragSat / 254) * (colorPicker.width / 2) - width / 2
-                        y: colorPicker.height / 2
-                           + Math.sin(-Math.PI / 2 + (colorPicker.dragHue / 65535) * 2 * Math.PI)
-                             * (colorPicker.dragSat / 254) * (colorPicker.height / 2) - height / 2
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-
-                        function apply(x, y) {
-                          var c = colorPicker.width / 2
-                          var dx = x - c
-                          var dy = y - c
-                          var dist = Math.sqrt(dx * dx + dy * dy)
-                          if (dist > c) return
-                          var hue01 = (((Math.atan2(dy, dx) + Math.PI / 2) / (2 * Math.PI)) % 1 + 1) % 1
-                          colorPicker.dragHue = Math.round(hue01 * 65535)
-                          colorPicker.dragSat = Math.round((dist / c) * 254)
-                        }
-
-                        onPressed: function(mouse) {
-                          colorPicker.picking = true
-                          apply(mouse.x, mouse.y)
-                        }
-                        onPositionChanged: function(mouse) {
-                          if (colorPicker.picking) apply(mouse.x, mouse.y)
-                        }
-                        onReleased: function(mouse) {
-                          colorPicker.picking = false
-                          root.setLightColor(modelData.id, colorPicker.dragHue, colorPicker.dragSat)
-                        }
-                      }
+                    ColorWheel {
+                      lightOn: modelData.on
+                      hasColor: modelData.hasColor
+                      pickerOpen: modelData.pickerOpen
+                      initialHue: modelData.hue
+                      initialSat: modelData.sat
+                      onColorSelected: function(hue, sat) { root.setLightColor(modelData.id, hue, sat) }
                     }
 
                     PanelSlider {
@@ -736,7 +699,7 @@ Panel {
               model: root.orphanLights
 
               Column {
-                id: lightRow
+                id: orphanLightRow
                 required property var modelData
                 width: parent.width
                 spacing: Style.space(2)
@@ -809,65 +772,13 @@ Panel {
                   }
                 }
 
-                Item {
-                  id: colorPicker
-                  visible: modelData.on && modelData.hasColor && modelData.pickerOpen
-                  width: Style.space(180)
-                  height: Style.space(180)
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  property real dragHue: modelData.hue
-                  property real dragSat: modelData.sat
-                  property bool picking: false
-
-                  Image {
-                    anchors.fill: parent
-                    source: Qt.resolvedUrl("hsv_wheel.png")
-                    fillMode: Image.Stretch
-                    smooth: true
-                  }
-
-                  Rectangle {
-                    width: 12
-                    height: 12
-                    radius: 6
-                    border.color: "#ffffff"
-                    border.width: 2
-                    color: "transparent"
-                    x: colorPicker.width / 2
-                       + Math.cos(-Math.PI / 2 + (colorPicker.dragHue / 65535) * 2 * Math.PI)
-                         * (colorPicker.dragSat / 254) * (colorPicker.width / 2) - width / 2
-                    y: colorPicker.height / 2
-                       + Math.sin(-Math.PI / 2 + (colorPicker.dragHue / 65535) * 2 * Math.PI)
-                         * (colorPicker.dragSat / 254) * (colorPicker.height / 2) - height / 2
-                  }
-
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-
-                    function apply(x, y) {
-                      var c = colorPicker.width / 2
-                      var dx = x - c
-                      var dy = y - c
-                      var dist = Math.sqrt(dx * dx + dy * dy)
-                      if (dist > c) return
-                      var hue01 = (((Math.atan2(dy, dx) + Math.PI / 2) / (2 * Math.PI)) % 1 + 1) % 1
-                      colorPicker.dragHue = Math.round(hue01 * 65535)
-                      colorPicker.dragSat = Math.round((dist / c) * 254)
-                    }
-
-                    onPressed: function(mouse) {
-                      colorPicker.picking = true
-                      apply(mouse.x, mouse.y)
-                    }
-                    onPositionChanged: function(mouse) {
-                      if (colorPicker.picking) apply(mouse.x, mouse.y)
-                    }
-                    onReleased: function(mouse) {
-                      colorPicker.picking = false
-                      root.setLightColor(modelData.id, colorPicker.dragHue, colorPicker.dragSat)
-                    }
-                  }
+                ColorWheel {
+                  lightOn: modelData.on
+                  hasColor: modelData.hasColor
+                  pickerOpen: modelData.pickerOpen
+                  initialHue: modelData.hue
+                  initialSat: modelData.sat
+                  onColorSelected: function(hue, sat) { root.setLightColor(modelData.id, hue, sat) }
                 }
 
                 PanelSlider {

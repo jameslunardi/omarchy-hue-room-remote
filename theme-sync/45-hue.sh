@@ -4,11 +4,17 @@ set -u
 
 THEME_SLUG="${1:-}"
 CONFIG_FILE="$HOME/.config/omarchy/settings/hue-theme.json"
-LOG_FILE="/tmp/hue-theme-hook.log"
+CREDS_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/hue.json"
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+LOG_FILE="$LOG_DIR/hue-theme-hook.log"
 
 log() {
   printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"
 }
+
+if [[ ! -f "$CREDS_FILE" ]]; then
+  exit 0
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   log "python3 not found; skipping hue theme sync"
@@ -31,6 +37,7 @@ CONFIG_FILE="$CONFIG_FILE" \
   python3 - "$LOG_FILE" <<'PY'
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -63,7 +70,8 @@ def get_json(url):
         with urllib.request.urlopen(url, timeout=5) as r:
             return json.load(r)
     except Exception as e:
-        log("bridge request failed %s: %s" % (url, e))
+        safe_url = re.sub(r'/api/[^/]+/', '/api/***/', url)
+        log("bridge request failed %s: %s" % (safe_url, e))
         return None
 
 

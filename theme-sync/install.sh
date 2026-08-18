@@ -15,6 +15,12 @@ CONFIG_DEST="$CONFIG_DIR/hue-theme.json"
 
 mkdir -p "$HOOK_DIR" "$CONFIG_DIR"
 
+if [[ -f "$HOOK_DEST" ]]; then
+  backup="$HOOK_DEST.bak.$(date +%s)"
+  cp -f "$HOOK_DEST" "$backup"
+  echo "Backed up existing hook to $backup"
+fi
+
 cp -f "$HOOK_SRC" "$HOOK_DEST"
 chmod +x "$HOOK_DEST"
 echo "Installed $HOOK_DEST"
