@@ -38,6 +38,7 @@ CONFIG_FILE="$CONFIG_FILE" \
 import json
 import os
 import re
+import socket
 import ssl
 import sys
 import time
@@ -48,8 +49,18 @@ theme_slug = os.environ.get("THEME_SLUG", "")
 accent = os.environ.get("ACCENT_COLOR", "").lstrip("#")
 config_file = os.environ.get("CONFIG_FILE", "")
 creds_file = os.path.expanduser("~/.local/state/omarchy/settings/hue.json")
-cacert_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                           "hue_bridge_cacert.pem")
+
+cacert_file = ""
+_plugin_dir = os.path.join(os.path.expanduser("~"),
+                           ".config/omarchy/plugins/omarchy-philips-hue")
+_candidates = [
+    os.path.join(_plugin_dir, "hue_bridge_cacert.pem"),
+    os.path.join(_plugin_dir, "..", "hue_bridge_cacert.pem"),
+]
+for _p in _candidates:
+    if os.path.isfile(_p):
+        cacert_file = os.path.abspath(_p)
+        break
 
 
 def log(msg):
@@ -68,23 +79,68 @@ def read_json(path):
         return None
 
 
-def _make_ctx(hostname):
-    ctx = ssl.create_default_context(cafile=cacert_file)
-    ctx.check_hostname = True
-    ctx.verify_mode = ssl.CERT_REQUIRED
-    ctx.hostname = hostname
-    return ctx
+class _BridgeResolver:
+    """Context manager that makes hostname resolve to a specific IP."""
+    def __init__(self, hostname, ip):
+        self._hostname = hostname
+        self._ip = ip
+        self._orig = None
+
+    def __enter__(self):
+        self._orig = socket.getaddrinfo
+        def _patched(host, port, *args, **kwargs):
+            if host == self._hostname:
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, '',
+                         (self._ip, port))]
+            return self._orig(host, port, *args, **kwargs)
+        socket.getaddrinfo = _patched
+        return self
+
+    def __exit__(self, *args):
+        socket.getaddrinfo = self._orig
 
 
-def get_json(url, hostname=None):
+_opener = None
+
+
+def _get_opener(hostname, cafile):
+    global _opener
+    if _opener is None:
+        ctx = ssl.create_default_context(cafile=cafile)
+        ctx.check_hostname = False
+        _opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=ctx))
+    return _opener
+
+
+def get_json(url, hostname=None, ip=None):
     try:
-        ctx = _make_ctx(hostname) if hostname else ssl.create_default_context()
-        with urllib.request.urlopen(url, timeout=5, context=ctx) as r:
-            return json.load(r)
+        if hostname and ip and cacert_file:
+            opener = _get_opener(hostname, cacert_file)
+            with _BridgeResolver(hostname, ip):
+                with opener.open(url, timeout=5) as r:
+                    return json.load(r)
+        else:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                return json.load(r)
     except Exception as e:
         safe_url = re.sub(r'/api/[^/]+/', '/api/***/', url)
         log("bridge request failed %s: %s" % (safe_url, e))
         return None
+
+
+def put_url(url, data, hostname=None, ip=None):
+    req = urllib.request.Request(
+        url, data=data.encode(), headers={"Content-Type": "application/json"},
+        method="PUT")
+    if hostname and ip and cacert_file:
+        opener = _get_opener(hostname, cacert_file)
+        with _BridgeResolver(hostname, ip):
+            with opener.open(req, timeout=5) as r:
+                r.read()
+    else:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            r.read()
 
 
 def hex_to_hsv(hexval):
@@ -136,14 +192,14 @@ if not color or len(color) != 6:
 hue, sat = hex_to_hsv(color)
 transition = int(cfg.get("transition", 20) or 20)
 
-if bridge_id and os.path.isfile(cacert_file):
-    base = "https://%s/api/%s" % (bridge_id, creds["username"])
+if bridge_id and cacert_file:
+    base = "https://%s/api/%s" % (bridge_ip, creds["username"])
     hostname = bridge_id
 else:
     base = "https://%s/api/%s" % (bridge_ip, creds["username"])
     hostname = None
 
-groups = get_json(base + "/groups", hostname=hostname)
+groups = get_json(base + "/groups", hostname=hostname, ip=bridge_ip)
 if groups is None:
     log("bridge unreachable; skipping hue theme sync")
     sys.exit(0)
@@ -174,14 +230,8 @@ if cfg.get("turnOn"):
 sent = 0
 for gid in targets:
     try:
-        req = urllib.request.Request(
-            base + "/groups/%s/action" % gid,
-            data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json"},
-            method="PUT",
-        )
-        with urllib.request.urlopen(req, timeout=5, context=_make_ctx(hostname)) as r:
-            r.read()
+        put_url(base + "/groups/%s/action" % gid, json.dumps(body),
+                hostname=hostname, ip=bridge_ip)
         sent += 1
     except Exception as e:
         log("group %s failed: %s" % (gid, e))
