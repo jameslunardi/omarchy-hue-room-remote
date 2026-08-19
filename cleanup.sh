@@ -10,19 +10,19 @@ removed=0
 if [[ -f "$STATE_FILE" ]]; then
   rm "$STATE_FILE"
   echo "Removed $STATE_FILE"
-  (( removed++ ))
+  removed=$((removed + 1))
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
   rm "$CONFIG_FILE"
   echo "Removed $CONFIG_FILE"
-  (( removed++ ))
+  removed=$((removed + 1))
 fi
 
 if [[ -f "$HOOK_FILE" ]]; then
   rm "$HOOK_FILE"
   echo "Removed $HOOK_FILE"
-  (( removed++ ))
+  removed=$((removed + 1))
 fi
 
 if [[ $removed -eq 0 ]]; then
