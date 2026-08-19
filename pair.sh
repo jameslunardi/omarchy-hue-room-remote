@@ -106,7 +106,7 @@ if [[ -z "$username" ]]; then
   err "Pairing failed. The link button was likely not pressed within 30 seconds. Try again."
   exit 1
 fi
-ok "Got username: $username"
+ok "Got username: ${username:0:4}***"
 
 info "Fetching bridge ID..."
 bridge_id=$(fetch_bridge_id "$local_ip")

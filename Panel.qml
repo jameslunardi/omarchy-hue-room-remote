@@ -29,6 +29,7 @@ Panel {
   readonly property int lightTotal: root.lightsTotal()
   readonly property int lightedRoomCount: root.lightedRooms().length
   readonly property bool allLightsOn: root.computeAllLightsOn()
+  readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
 
   readonly property string statusText: {
     if (root.config === null) return "Not paired"
@@ -549,6 +550,16 @@ Panel {
             visible: root.config !== null && root.lastFetchFailed && !root.loading
             width: parent.width
             text: "Couldn't reach the bridge. Check the bridge is on and the IP is still valid, then re-run pair.sh."
+            color: Color.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: root.insecureMode
+            width: parent.width
+            text: "TLS verification disabled. Re-run pair.sh to secure the connection."
             color: Color.urgent
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
