@@ -112,6 +112,12 @@ info "Fetching bridge ID..."
 bridge_id=$(fetch_bridge_id "$local_ip")
 
 mkdir -p "$STATE_DIR"
+if [[ -f "$STATE_FILE" ]]; then
+  current_perms=$(stat -c '%a' "$STATE_FILE" 2>/dev/null || echo "000")
+  if [[ "$current_perms" != "600" ]]; then
+    chmod 600 "$STATE_FILE"
+  fi
+fi
 umask 077
 if [[ -n "$bridge_id" ]]; then
   cat > "$STATE_FILE" <<EOF
@@ -121,6 +127,7 @@ if [[ -n "$bridge_id" ]]; then
   "username": "$username"
 }
 EOF
+  chmod 600 "$STATE_FILE"
   ok "Saved config to $STATE_FILE (bridge ID: $bridge_id)"
 else
   cat > "$STATE_FILE" <<EOF
@@ -129,6 +136,7 @@ else
   "username": "$username"
 }
 EOF
+  chmod 600 "$STATE_FILE"
   ok "Saved config to $STATE_FILE (could not fetch bridge ID)"
 fi
 

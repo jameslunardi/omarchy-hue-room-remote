@@ -107,6 +107,15 @@ def hex_to_hsv(hexval):
     return int(round(hue01 * 65535)) % 65536, int(round(sat * 254))
 
 
+try:
+    st = os.stat(creds_file)
+    perms = oct(st.st_mode)[-3:]
+    if perms != "600":
+        os.chmod(creds_file, 0o600)
+        log("repaired hue.json permissions from %s to 600" % perms)
+except Exception:
+    pass
+
 creds = read_json(creds_file)
 if not creds or not creds.get("bridgeIp") or not creds.get("username"):
     sys.exit(0)
