@@ -1,3 +1,5 @@
+var CACERT = Qt.resolvedUrl("hue_bridge_cacert.pem").toString().replace("file://", "")
+
 function isValidIp(ip) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)
 }
@@ -14,22 +16,41 @@ function parseConfig(text) {
     if (!parsed || typeof parsed !== "object") return null
     var bridgeIp = String(parsed.bridgeIp || "").trim()
     var username = String(parsed.username || "").trim()
+    var bridgeId = String(parsed.bridgeId || "").trim().toLowerCase()
     if (!bridgeIp || !isValidIp(bridgeIp)) return null
     if (!username || !isValidId(username)) return null
-    return { bridgeIp: bridgeIp, username: username }
+    if (bridgeId && !isValidId(bridgeId)) bridgeId = ""
+    return { bridgeIp: bridgeIp, username: username, bridgeId: bridgeId }
   } catch (e) {
     return null
   }
 }
 
-function curlGet(url) {
-  return ["curl", "-fsSk", "--max-time", "5", url]
+function curlGet(url, config) {
+  var cmd = ["curl", "-fsS", "--max-time", "5", "--cacert", CACERT]
+  if (config && config.bridgeId) {
+    cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
+    cmd.push(url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId))
+  } else {
+    cmd.push("-k")
+    cmd.push(url)
+  }
+  return cmd
 }
 
-function curlPutJson(url, body) {
-  return ["curl", "-fsSk", "--max-time", "5", "-X", "PUT",
+function curlPutJson(url, body, config) {
+  var resolvedUrl = url
+  var cmd = ["curl", "-fsS", "--max-time", "5", "-X", "PUT",
     "-H", "Content-Type: application/json",
-    "-d", body, url]
+    "--cacert", CACERT]
+  if (config && config.bridgeId) {
+    cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
+    resolvedUrl = url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId)
+  } else {
+    cmd.push("-k")
+  }
+  cmd.push("-d", body, resolvedUrl)
+  return cmd
 }
 
 function lightsUrl(config) {

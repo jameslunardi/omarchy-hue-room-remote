@@ -48,6 +48,8 @@ theme_slug = os.environ.get("THEME_SLUG", "")
 accent = os.environ.get("ACCENT_COLOR", "").lstrip("#")
 config_file = os.environ.get("CONFIG_FILE", "")
 creds_file = os.path.expanduser("~/.local/state/omarchy/settings/hue.json")
+cacert_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                           "hue_bridge_cacert.pem")
 
 
 def log(msg):
@@ -66,14 +68,18 @@ def read_json(path):
         return None
 
 
-_insecure_ctx = ssl.create_default_context()
-_insecure_ctx.check_hostname = False
-_insecure_ctx.verify_mode = ssl.CERT_NONE
+def _make_ctx(hostname):
+    ctx = ssl.create_default_context(cafile=cacert_file)
+    ctx.check_hostname = True
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.hostname = hostname
+    return ctx
 
 
-def get_json(url):
+def get_json(url, hostname=None):
     try:
-        with urllib.request.urlopen(url, timeout=5, context=_insecure_ctx) as r:
+        ctx = _make_ctx(hostname) if hostname else ssl.create_default_context()
+        with urllib.request.urlopen(url, timeout=5, context=ctx) as r:
             return json.load(r)
     except Exception as e:
         safe_url = re.sub(r'/api/[^/]+/', '/api/***/', url)
@@ -105,6 +111,9 @@ creds = read_json(creds_file)
 if not creds or not creds.get("bridgeIp") or not creds.get("username"):
     sys.exit(0)
 
+bridge_id = str(creds.get("bridgeId") or "").strip().lower()
+bridge_ip = creds["bridgeIp"]
+
 cfg = read_json(config_file) or {}
 if not cfg.get("enabled", True):
     sys.exit(0)
@@ -118,8 +127,14 @@ if not color or len(color) != 6:
 hue, sat = hex_to_hsv(color)
 transition = int(cfg.get("transition", 20) or 20)
 
-base = "https://%s/api/%s" % (creds["bridgeIp"], creds["username"])
-groups = get_json(base + "/groups")
+if bridge_id and os.path.isfile(cacert_file):
+    base = "https://%s/api/%s" % (bridge_id, creds["username"])
+    hostname = bridge_id
+else:
+    base = "https://%s/api/%s" % (bridge_ip, creds["username"])
+    hostname = None
+
+groups = get_json(base + "/groups", hostname=hostname)
 if groups is None:
     log("bridge unreachable; skipping hue theme sync")
     sys.exit(0)
@@ -156,7 +171,7 @@ for gid in targets:
             headers={"Content-Type": "application/json"},
             method="PUT",
         )
-        with urllib.request.urlopen(req, timeout=5, context=_insecure_ctx) as r:
+        with urllib.request.urlopen(req, timeout=5, context=_make_ctx(hostname)) as r:
             r.read()
         sent += 1
     except Exception as e:

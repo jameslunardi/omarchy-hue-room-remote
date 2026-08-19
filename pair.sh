@@ -3,6 +3,7 @@ set -euo pipefail
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
+CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/hue_bridge_cacert.pem"
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
 DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
 
@@ -33,6 +34,21 @@ print(ips[0] if ips else '')
 " <<<"$response")
   [[ -n "$ip" ]] || return 1
   printf '%s\n' "$ip"
+}
+
+fetch_bridge_id() {
+  local ip="$1" bridge_id
+  bridge_id=$(curl -fsSk --max-time 5 "https://$ip/api/config" 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    bid = d.get('bridgeid', '')
+    print(bid.lower() if bid else '')
+except Exception:
+    pass
+" 2>/dev/null || true)
+  printf '%s\n' "$bridge_id"
 }
 
 pair() {
@@ -92,19 +108,40 @@ if [[ -z "$username" ]]; then
 fi
 ok "Got username: $username"
 
+info "Fetching bridge ID..."
+bridge_id=$(fetch_bridge_id "$local_ip")
+
 mkdir -p "$STATE_DIR"
 umask 077
-cat > "$STATE_FILE" <<EOF
+if [[ -n "$bridge_id" ]]; then
+  cat > "$STATE_FILE" <<EOF
+{
+  "bridgeIp": "$local_ip",
+  "bridgeId": "$bridge_id",
+  "username": "$username"
+}
+EOF
+  ok "Saved config to $STATE_FILE (bridge ID: $bridge_id)"
+else
+  cat > "$STATE_FILE" <<EOF
 {
   "bridgeIp": "$local_ip",
   "username": "$username"
 }
 EOF
-ok "Saved config to $STATE_FILE"
+  ok "Saved config to $STATE_FILE (could not fetch bridge ID)"
+fi
 
 info "Verifying access..."
-light_count=$(curl -fsSk --max-time 5 "https://$local_ip/api/$username/lights" 2>/dev/null \
-  | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
+if [[ -n "$bridge_id" ]] && [[ -f "$CACERT" ]]; then
+  light_count=$(curl -fsS --max-time 5 --cacert "$CACERT" \
+    --resolve "${bridge_id}:443:${local_ip}" \
+    "https://${bridge_id}/api/${username}/lights" 2>/dev/null \
+    | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
+else
+  light_count=$(curl -fsSk --max-time 5 "https://$local_ip/api/$username/lights" 2>/dev/null \
+    | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
+fi
 if [[ -n "$light_count" ]]; then
   ok "Connected. Found $light_count light(s)."
 else
