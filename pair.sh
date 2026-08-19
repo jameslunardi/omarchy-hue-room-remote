@@ -37,8 +37,8 @@ print(ips[0] if ips else '')
 
 pair() {
   local ip="$1" response username
-  response=$(curl -sS --max-time 8 -X POST -H "Content-Type: application/json" \
-    -d "{\"devicetype\":\"$DEVICETYPE\"}" "http://$ip/api" 2>/dev/null || true)
+  response=$(curl -sSk --max-time 8 -X POST -H "Content-Type: application/json" \
+    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://$ip/api" 2>/dev/null || true)
   username=$(python3 -c "
 import json, sys
 try:
@@ -103,7 +103,7 @@ EOF
 ok "Saved config to $STATE_FILE"
 
 info "Verifying access..."
-light_count=$(curl -fsS --max-time 5 "http://$local_ip/api/$username/lights" 2>/dev/null \
+light_count=$(curl -fsSk --max-time 5 "https://$local_ip/api/$username/lights" 2>/dev/null \
   | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
 if [[ -n "$light_count" ]]; then
   ok "Connected. Found $light_count light(s)."

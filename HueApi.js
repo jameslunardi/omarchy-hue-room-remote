@@ -23,30 +23,30 @@ function parseConfig(text) {
 }
 
 function curlGet(url) {
-  return ["curl", "-fsS", "--max-time", "5", url]
+  return ["curl", "-fsSk", "--max-time", "5", url]
 }
 
 function curlPutJson(url, body) {
-  return ["curl", "-fsS", "--max-time", "5", "-X", "PUT",
+  return ["curl", "-fsSk", "--max-time", "5", "-X", "PUT",
     "-H", "Content-Type: application/json",
     "-d", body, url]
 }
 
 function lightsUrl(config) {
-  return "http://" + config.bridgeIp + "/api/" + config.username + "/lights"
+  return "https://" + config.bridgeIp + "/api/" + config.username + "/lights"
 }
 
 function groupsUrl(config) {
-  return "http://" + config.bridgeIp + "/api/" + config.username + "/groups"
+  return "https://" + config.bridgeIp + "/api/" + config.username + "/groups"
 }
 
 function lightStateUrl(config, lightId) {
-  return "http://" + config.bridgeIp + "/api/" + config.username
+  return "https://" + config.bridgeIp + "/api/" + config.username
     + "/lights/" + encodeURIComponent(lightId) + "/state"
 }
 
 function groupActionUrl(config, groupId) {
-  return "http://" + config.bridgeIp + "/api/" + config.username
+  return "https://" + config.bridgeIp + "/api/" + config.username
     + "/groups/" + encodeURIComponent(groupId) + "/action"
 }
 
