@@ -3,7 +3,7 @@ function isValidIp(ip) {
 }
 
 function isValidId(id) {
-  return /^\d{1,10}$/.test(String(id))
+  return /^[a-f0-9]{1,40}$/i.test(String(id))
 }
 
 function parseConfig(text) {
