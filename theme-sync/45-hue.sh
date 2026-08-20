@@ -53,14 +53,9 @@ creds_file = os.path.expanduser("~/.local/state/omarchy/settings/hue.json")
 cacert_file = ""
 _plugin_dir = os.path.join(os.path.expanduser("~"),
                            ".config/omarchy/plugins/omarchy-philips-hue")
-_candidates = [
-    os.path.join(_plugin_dir, "hue_bridge_cacert.pem"),
-    os.path.join(_plugin_dir, "..", "hue_bridge_cacert.pem"),
-]
-for _p in _candidates:
-    if os.path.isfile(_p):
-        cacert_file = os.path.abspath(_p)
-        break
+_candidate = os.path.join(_plugin_dir, "hue_bridge_cacert.pem")
+if os.path.isfile(_candidate):
+    cacert_file = os.path.abspath(_candidate)
 
 
 def log(msg):
@@ -107,17 +102,17 @@ def _get_opener(hostname, cafile):
     global _opener
     if _opener is None:
         ctx = ssl.create_default_context(cafile=cafile)
-        ctx.check_hostname = False
+        ctx.check_hostname = True
         _opener = urllib.request.build_opener(
             urllib.request.HTTPSHandler(context=ctx))
     return _opener
 
 
-def get_json(url, hostname=None, ip=None):
+def get_json(url, hostname=None):
     try:
-        if hostname and ip and cacert_file:
+        if hostname and cacert_file:
             opener = _get_opener(hostname, cacert_file)
-            with _BridgeResolver(hostname, ip):
+            with _BridgeResolver(hostname, bridge_ip):
                 with opener.open(url, timeout=5) as r:
                     return json.load(r)
         else:
@@ -129,13 +124,13 @@ def get_json(url, hostname=None, ip=None):
         return None
 
 
-def put_url(url, data, hostname=None, ip=None):
+def put_url(url, data, hostname=None):
     req = urllib.request.Request(
         url, data=data.encode(), headers={"Content-Type": "application/json"},
         method="PUT")
-    if hostname and ip and cacert_file:
+    if hostname and cacert_file:
         opener = _get_opener(hostname, cacert_file)
-        with _BridgeResolver(hostname, ip):
+        with _BridgeResolver(hostname, bridge_ip):
             with opener.open(req, timeout=5) as r:
                 r.read()
     else:
@@ -193,13 +188,13 @@ hue, sat = hex_to_hsv(color)
 transition = int(cfg.get("transition", 20) or 20)
 
 if bridge_id and cacert_file:
-    base = "https://%s/api/%s" % (bridge_ip, creds["username"])
+    base = "https://%s/api/%s" % (bridge_id, creds["username"])
     hostname = bridge_id
 else:
     base = "https://%s/api/%s" % (bridge_ip, creds["username"])
     hostname = None
 
-groups = get_json(base + "/groups", hostname=hostname, ip=bridge_ip)
+groups = get_json(base + "/groups", hostname=hostname)
 if groups is None:
     log("bridge unreachable; skipping hue theme sync")
     sys.exit(0)
@@ -231,7 +226,7 @@ sent = 0
 for gid in targets:
     try:
         put_url(base + "/groups/%s/action" % gid, json.dumps(body),
-                hostname=hostname, ip=bridge_ip)
+                hostname=hostname)
         sent += 1
     except Exception as e:
         log("group %s failed: %s" % (gid, e))
