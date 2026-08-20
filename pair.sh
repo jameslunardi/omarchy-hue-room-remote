@@ -124,6 +124,7 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
+[[ ! -L "$STATE_FILE" ]] || rm "$STATE_FILE"
 install -m 600 /dev/null "$STATE_FILE"
 cat > "$STATE_FILE" <<EOF
 {

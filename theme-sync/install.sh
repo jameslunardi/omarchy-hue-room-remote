@@ -21,11 +21,13 @@ if [[ -f "$HOOK_DEST" ]]; then
   echo "Backed up existing hook to $backup"
 fi
 
+[[ ! -L "$HOOK_DEST" ]] || rm "$HOOK_DEST"
 cp -f "$HOOK_SRC" "$HOOK_DEST"
 chmod +x "$HOOK_DEST"
 echo "Installed $HOOK_DEST"
 
 if [[ ! -f "$CONFIG_DEST" ]]; then
+  [[ ! -L "$CONFIG_DEST" ]] || rm "$CONFIG_DEST"
   cp "$CONFIG_SRC" "$CONFIG_DEST"
   echo "Installed $CONFIG_DEST"
 else

@@ -9,10 +9,14 @@ LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 LOG_FILE="$LOG_DIR/hue-theme-hook.log"
 
 log() {
+  [[ ! -L "$LOG_FILE" ]] || rm "$LOG_FILE"
   printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"
 }
 
 # Ensure log file has restricted permissions before first write
+if [[ -L "$LOG_FILE" ]]; then
+  rm "$LOG_FILE"
+fi
 if [[ ! -f "$LOG_FILE" ]]; then
   touch "$LOG_FILE"
   chmod 600 "$LOG_FILE" 2>/dev/null
@@ -68,6 +72,8 @@ if os.path.isfile(_candidate):
 
 def log(msg):
     try:
+        if os.path.islink(log_file):
+            os.remove(log_file)
         if not os.path.exists(log_file):
             open(log_file, "a").close()
             os.chmod(log_file, 0o600)
@@ -176,6 +182,8 @@ def hex_to_hsv(hexval):
 
 
 try:
+    if os.path.islink(creds_file):
+        os.remove(creds_file)
     st = os.stat(creds_file)
     perms = oct(st.st_mode)[-3:]
     if perms != "600":
