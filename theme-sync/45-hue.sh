@@ -120,7 +120,8 @@ def get_json(url, hostname=None):
                 return json.load(r)
     except Exception as e:
         safe_url = re.sub(r'/api/[^/]+/', '/api/***/', url)
-        log("bridge request failed %s: %s" % (safe_url, e))
+        safe_e = re.sub(r'/api/[^/]+/', '/api/***/', str(e))
+        log("bridge request failed %s: %s" % (safe_url, safe_e))
         return None
 
 
@@ -229,7 +230,8 @@ for gid in targets:
                 hostname=hostname)
         sent += 1
     except Exception as e:
-        log("group %s failed: %s" % (gid, e))
+        safe_e = re.sub(r'/api/[^/]+/', '/api/***/', str(e))
+        log("group %s failed: %s" % (gid, safe_e))
 
 log("theme sync: %d/%d group(s) -> #%s" % (sent, len(targets), color))
 PY
