@@ -93,8 +93,8 @@ Panel {
   function startFetches() {
     if (!root.config) return
     root.pendingFetches = 2
-    lightsProc.command = HueApi.curlGet(HueApi.lightsUrl(root.config), root.config)
-    groupsProc.command = HueApi.curlGet(HueApi.groupsUrl(root.config), root.config)
+    lightsProc.command = HueApi.apiCmd(["get-lights"])
+    groupsProc.command = HueApi.apiCmd(["get-groups"])
     lightsProc.running = true
     groupsProc.running = true
   }
@@ -235,14 +235,14 @@ Panel {
   function toggleRoom(roomId, on) {
     if (!root.config) return
     root.setRoomOn(roomId, on)
-    root.runAction(HueApi.curlPutJson(HueApi.groupActionUrl(root.config, roomId), JSON.stringify({ on: on }), root.config))
+    root.runAction(HueApi.apiCmd(["put-group", roomId, JSON.stringify({ on: on })]))
     root.scheduleRefresh()
   }
 
   function toggleLight(lightId, on) {
     if (!root.config) return
     root.setLightOn(lightId, on)
-    root.runAction(HueApi.curlPutJson(HueApi.lightStateUrl(root.config, lightId), JSON.stringify({ on: on }), root.config))
+    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ on: on })]))
     root.scheduleRefresh()
   }
 
@@ -250,7 +250,7 @@ Panel {
     if (!root.config) return
     var clamped = Math.max(1, Math.min(254, Math.round(bri)))
     root.setLightBri(lightId, clamped)
-    root.runAction(HueApi.curlPutJson(HueApi.lightStateUrl(root.config, lightId), JSON.stringify({ bri: clamped }), root.config))
+    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ bri: clamped })]))
     root.scheduleRefresh()
   }
 
@@ -258,14 +258,14 @@ Panel {
     if (!root.config) return
     var clamped = Math.max(153, Math.min(500, Math.round(ct)))
     root.setLightCt(lightId, clamped)
-    root.runAction(HueApi.curlPutJson(HueApi.lightStateUrl(root.config, lightId), JSON.stringify({ ct: clamped }), root.config))
+    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ ct: clamped })]))
     root.scheduleRefresh()
   }
 
   function setLightColor(lightId, hue, sat) {
     if (!root.config) return
     root.patchLightColor(lightId, hue, sat)
-    root.runAction(HueApi.curlPutJson(HueApi.lightStateUrl(root.config, lightId), JSON.stringify({ hue: hue, sat: sat }), root.config))
+    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ hue: hue, sat: sat })]))
     root.scheduleRefresh()
   }
 
@@ -274,7 +274,7 @@ Panel {
     var rooms = root.lightedRooms()
     var body = JSON.stringify({ on: on })
     for (var i = 0; i < rooms.length; i++) {
-      root.runAction(HueApi.curlPutJson(HueApi.groupActionUrl(root.config, rooms[i].id), body, root.config))
+      root.runAction(HueApi.apiCmd(["put-group", rooms[i].id, body]))
     }
     root.setAllOn(on)
     root.scheduleRefresh()

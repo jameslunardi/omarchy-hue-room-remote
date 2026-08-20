@@ -1,4 +1,10 @@
-var CACERT = Qt.resolvedUrl("hue_bridge_cacert.pem").toString().replace("file://", "")
+var API = Qt.resolvedUrl("hue-api.py").toString().replace("file://", "")
+
+function apiCmd(args) {
+  var cmd = ["python3", API]
+  for (var i = 0; i < args.length; i++) cmd.push(String(args[i]))
+  return cmd
+}
 
 function isValidIp(ip) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)
@@ -24,48 +30,6 @@ function parseConfig(text) {
   } catch (e) {
     return null
   }
-}
-
-function curlGet(url, config) {
-  var cmd = ["curl", "-fsS", "--max-time", "5", "--cacert", CACERT]
-  if (config && config.bridgeId) {
-    cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
-    cmd.push(url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId))
-  } else {
-    cmd.push(url)
-  }
-  return cmd
-}
-
-function curlPutJson(url, body, config) {
-  var resolvedUrl = url
-  var cmd = ["curl", "-fsS", "--max-time", "5", "-X", "PUT",
-    "-H", "Content-Type: application/json",
-    "--cacert", CACERT]
-  if (config && config.bridgeId) {
-    cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
-    resolvedUrl = url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId)
-  }
-  cmd.push("-d", body, resolvedUrl)
-  return cmd
-}
-
-function lightsUrl(config) {
-  return "https://" + config.bridgeIp + "/api/" + config.username + "/lights"
-}
-
-function groupsUrl(config) {
-  return "https://" + config.bridgeIp + "/api/" + config.username + "/groups"
-}
-
-function lightStateUrl(config, lightId) {
-  return "https://" + config.bridgeIp + "/api/" + config.username
-    + "/lights/" + encodeURIComponent(lightId) + "/state"
-}
-
-function groupActionUrl(config, groupId) {
-  return "https://" + config.bridgeIp + "/api/" + config.username
-    + "/groups/" + encodeURIComponent(groupId) + "/action"
 }
 
 function parseJsonObject(text) {
