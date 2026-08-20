@@ -10,10 +10,18 @@ removed=0
 secure_remove() {
   local f="$1"
   [[ -f "$f" ]] || return 0
-  local size
-  size=$(stat -c%s "$f" 2>/dev/null || echo 0)
-  if [[ "$size" -gt 0 ]]; then
-    dd if=/dev/zero of="$f" bs=1 count="$size" conv=notrunc 2>/dev/null || true
+  if [[ -L "$f" ]]; then
+    rm "$f"
+    return 0
+  fi
+  local owner
+  owner=$(stat -c '%U' "$f" 2>/dev/null || true)
+  if [[ "$owner" == "$USER" ]]; then
+    local size
+    size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+    if [[ "$size" -gt 0 ]]; then
+      dd if=/dev/zero of="$f" bs=1 count="$size" conv=notrunc 2>/dev/null || true
+    fi
   fi
   rm "$f"
 }
