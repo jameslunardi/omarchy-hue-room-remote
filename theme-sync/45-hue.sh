@@ -8,8 +8,21 @@ CREDS_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/hue.json"
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 LOG_FILE="$LOG_DIR/hue-theme-hook.log"
 
+if ! command -v python3 >/dev/null 2>&1; then
+  printf '[%s] %s\n' "$(date '+%F %T')" "python3 not found; skipping hue theme sync" >> "$LOG_FILE" 2>/dev/null
+  exit 0
+fi
+
 log() {
-  printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"
+  python3 -c "
+import os, sys, time
+try:
+    fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'a') as f:
+        f.write('[%s] %s\n' % (time.strftime('%F %T'), sys.argv[1]))
+except Exception:
+    pass
+" "$*" 2>/dev/null
 }
 
 # Ensure log file has restricted permissions before first write
@@ -33,11 +46,6 @@ except FileExistsError:
 " 2>/dev/null
 
 if [[ ! -f "$CREDS_FILE" ]]; then
-  exit 0
-fi
-
-if ! command -v python3 >/dev/null 2>&1; then
-  log "python3 not found; skipping hue theme sync"
   exit 0
 fi
 
