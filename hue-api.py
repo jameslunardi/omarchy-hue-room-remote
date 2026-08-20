@@ -119,6 +119,9 @@ def main():
         group_id = sys.argv[2]
         action = json.loads(sys.argv[3])
         _put(creds, "/groups/%s/action" % group_id, action)
+    elif op == "verify":
+        lights = _request("/lights", creds)
+        print(len(lights))
 
 
 if __name__ == "__main__":

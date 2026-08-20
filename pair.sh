@@ -144,10 +144,7 @@ if [[ ! -f "$CACERT" ]]; then
 fi
 
 info "Verifying access..."
-light_count=$(curl -fsS --max-time 5 --cacert "$CACERT" \
-  --resolve "${bridge_id}:443:${local_ip}" \
-  "https://${bridge_id}/api/${username}/lights" 2>/dev/null \
-  | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
+light_count=$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/hue-api.py" verify 2>/dev/null || true)
 if [[ -n "$light_count" ]]; then
   ok "Connected. Found $light_count light(s)."
 else
