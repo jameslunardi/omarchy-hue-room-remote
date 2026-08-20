@@ -32,7 +32,6 @@ function curlGet(url, config) {
     cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
     cmd.push(url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId))
   } else {
-    cmd.push("-k")
     cmd.push(url)
   }
   return cmd
@@ -46,8 +45,6 @@ function curlPutJson(url, body, config) {
   if (config && config.bridgeId) {
     cmd.push("--resolve", config.bridgeId + ":443:" + config.bridgeIp)
     resolvedUrl = url.replace("https://" + config.bridgeIp, "https://" + config.bridgeId)
-  } else {
-    cmd.push("-k")
   }
   cmd.push("-d", body, resolvedUrl)
   return cmd

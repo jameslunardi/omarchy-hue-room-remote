@@ -3,7 +3,7 @@ set -euo pipefail
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
-CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/hue_bridge_cacert.pem"
+CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/hue_bridge_cacert.pem"
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
 DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
 
@@ -38,13 +38,15 @@ print(ips[0] if ips else '')
 
 fetch_bridge_id() {
   local ip="$1" bridge_id
-  bridge_id=$(curl -fsSk --max-time 5 "https://$ip/api/config" 2>/dev/null \
-    | python3 -c "
-import json, sys
+  bridge_id=$(python3 - "
+import json, ssl, sys, urllib.request
+ctx = ssl.create_default_context(cafile=\"$CACERT\")
+ctx.check_hostname = False
 try:
-    d = json.load(sys.stdin)
-    bid = d.get('bridgeid', '')
-    print(bid.lower() if bid else '')
+    with urllib.request.urlopen(\"https://$ip/api/config\", timeout=5, context=ctx) as r:
+        d = json.load(r)
+        bid = d.get(\"bridgeid\", \"\")
+        print(bid.lower() if bid else \"\")
 except Exception:
     pass
 " 2>/dev/null || true)
@@ -52,9 +54,11 @@ except Exception:
 }
 
 pair() {
-  local ip="$1" response username
-  response=$(curl -sSk --max-time 8 -X POST -H "Content-Type: application/json" \
-    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://$ip/api" 2>/dev/null || true)
+  local ip="$1" bridge_id="$2" response username
+  response=$(curl -fsS --max-time 8 --cacert "$CACERT" \
+    --resolve "${bridge_id}:443:${ip}" \
+    -X POST -H "Content-Type: application/json" \
+    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://${bridge_id}/api" 2>/dev/null || true)
   username=$(python3 -c "
 import json, sys
 try:
@@ -100,16 +104,21 @@ fi
 
 info "Using bridge at $local_ip"
 
+info "Fetching bridge ID..."
+bridge_id=$(fetch_bridge_id "$local_ip")
+if [[ -z "$bridge_id" ]]; then
+  err "Could not fetch bridge ID. Aborting."
+  exit 1
+fi
+ok "Bridge ID: ${bridge_id:0:8}***"
+
 info "Requesting access from the bridge..."
-username=$(pair "$local_ip") || true
+username=$(pair "$local_ip" "$bridge_id") || true
 if [[ -z "$username" ]]; then
   err "Pairing failed. The link button was likely not pressed within 30 seconds. Try again."
   exit 1
 fi
 ok "Got username: ${username:0:4}***"
-
-info "Fetching bridge ID..."
-bridge_id=$(fetch_bridge_id "$local_ip")
 
 mkdir -p "$STATE_DIR"
 if [[ -f "$STATE_FILE" ]]; then
@@ -119,37 +128,26 @@ if [[ -f "$STATE_FILE" ]]; then
   fi
 fi
 umask 077
-if [[ -n "$bridge_id" ]]; then
-  cat > "$STATE_FILE" <<EOF
+cat > "$STATE_FILE" <<EOF
 {
   "bridgeIp": "$local_ip",
   "bridgeId": "$bridge_id",
   "username": "$username"
 }
 EOF
-  chmod 600 "$STATE_FILE"
-  ok "Saved config to $STATE_FILE (bridge ID: $bridge_id)"
-else
-  cat > "$STATE_FILE" <<EOF
-{
-  "bridgeIp": "$local_ip",
-  "username": "$username"
-}
-EOF
-  chmod 600 "$STATE_FILE"
-  ok "Saved config to $STATE_FILE (could not fetch bridge ID)"
+chmod 600 "$STATE_FILE"
+ok "Saved config to $STATE_FILE"
+
+if [[ ! -f "$CACERT" ]]; then
+  err "CA cert not found at $CACERT. Cannot verify bridge connection."
+  exit 1
 fi
 
 info "Verifying access..."
-if [[ -n "$bridge_id" ]] && [[ -f "$CACERT" ]]; then
-  light_count=$(curl -fsS --max-time 5 --cacert "$CACERT" \
-    --resolve "${bridge_id}:443:${local_ip}" \
-    "https://${bridge_id}/api/${username}/lights" 2>/dev/null \
-    | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
-else
-  light_count=$(curl -fsSk --max-time 5 "https://$local_ip/api/$username/lights" 2>/dev/null \
-    | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
-fi
+light_count=$(curl -fsS --max-time 5 --cacert "$CACERT" \
+  --resolve "${bridge_id}:443:${local_ip}" \
+  "https://${bridge_id}/api/${username}/lights" 2>/dev/null \
+  | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || true)
 if [[ -n "$light_count" ]]; then
   ok "Connected. Found $light_count light(s)."
 else
