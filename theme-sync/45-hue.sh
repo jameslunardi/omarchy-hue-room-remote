@@ -19,12 +19,17 @@ try:
     fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
 except FileExistsError:
-    if os.path.islink('''$LOG_FILE'''):
-        os.remove('''$LOG_FILE''')
+    try:
+        fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_NOFOLLOW)
+        os.fchmod(fd, 0o600)
+        os.close(fd)
+    except (OSError, ValueError):
+        try:
+            os.remove('''$LOG_FILE''')
+        except OSError:
+            pass
         fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
-    else:
-        os.chmod('''$LOG_FILE''', 0o600)
 " 2>/dev/null
 
 if [[ ! -f "$CREDS_FILE" ]]; then
@@ -75,7 +80,7 @@ if os.path.isfile(_candidate):
 
 def log(msg):
     try:
-        fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "a") as f:
             f.write("[%s] %s\n" % (time.strftime("%F %T"), msg))
     except Exception:
@@ -176,13 +181,16 @@ def hex_to_hsv(hexval):
 
 
 try:
-    if not os.path.islink(creds_file):
-        st = os.stat(creds_file)
+    fd = os.open(creds_file, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        st = os.fstat(fd)
         perms = oct(st.st_mode)[-3:]
         if perms != "600":
-            os.chmod(creds_file, 0o600)
+            os.fchmod(fd, 0o600)
             log("repaired hue.json permissions from %s to 600" % perms)
-except Exception:
+    finally:
+        os.close(fd)
+except (OSError, ValueError):
     pass
 
 creds = read_json(creds_file)

@@ -22,7 +22,7 @@ import os, stat
 try:
     st = os.lstat('''$f''')
     if stat.S_ISREG(st.st_mode) and st.st_size > 0:
-        fd = os.open('''$f''', os.O_WRONLY)
+        fd = os.open('''$f''', os.O_WRONLY | os.O_NOFOLLOW)
         os.write(fd, b'\x00' * st.st_size)
         os.close(fd)
 except Exception:
