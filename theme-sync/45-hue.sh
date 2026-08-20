@@ -9,20 +9,23 @@ LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 LOG_FILE="$LOG_DIR/hue-theme-hook.log"
 
 log() {
-  [[ ! -L "$LOG_FILE" ]] || rm "$LOG_FILE"
   printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"
 }
 
 # Ensure log file has restricted permissions before first write
-if [[ -L "$LOG_FILE" ]]; then
-  rm "$LOG_FILE"
-fi
-if [[ ! -f "$LOG_FILE" ]]; then
-  touch "$LOG_FILE"
-  chmod 600 "$LOG_FILE" 2>/dev/null
-elif [[ "$(stat -c '%a' "$LOG_FILE" 2>/dev/null)" != "600" ]]; then
-  chmod 600 "$LOG_FILE" 2>/dev/null
-fi
+python3 -c "
+import os
+try:
+    fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(fd)
+except FileExistsError:
+    if os.path.islink('''$LOG_FILE'''):
+        os.remove('''$LOG_FILE''')
+        fd = os.open('''$LOG_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
+    else:
+        os.chmod('''$LOG_FILE''', 0o600)
+" 2>/dev/null
 
 if [[ ! -f "$CREDS_FILE" ]]; then
   exit 0
@@ -72,17 +75,8 @@ if os.path.isfile(_candidate):
 
 def log(msg):
     try:
-        if os.path.islink(log_file):
-            os.remove(log_file)
-        if not os.path.exists(log_file):
-            open(log_file, "a").close()
-            os.chmod(log_file, 0o600)
-        elif oct(os.stat(log_file).st_mode)[-3:] != "600":
-            os.chmod(log_file, 0o600)
-    except Exception:
-        pass
-    try:
-        with open(log_file, "a") as f:
+        fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a") as f:
             f.write("[%s] %s\n" % (time.strftime("%F %T"), msg))
     except Exception:
         pass
@@ -182,13 +176,12 @@ def hex_to_hsv(hexval):
 
 
 try:
-    if os.path.islink(creds_file):
-        os.remove(creds_file)
-    st = os.stat(creds_file)
-    perms = oct(st.st_mode)[-3:]
-    if perms != "600":
-        os.chmod(creds_file, 0o600)
-        log("repaired hue.json permissions from %s to 600" % perms)
+    if not os.path.islink(creds_file):
+        st = os.stat(creds_file)
+        perms = oct(st.st_mode)[-3:]
+        if perms != "600":
+            os.chmod(creds_file, 0o600)
+            log("repaired hue.json permissions from %s to 600" % perms)
 except Exception:
     pass
 

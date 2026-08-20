@@ -22,21 +22,44 @@ if [[ -f "$HOOK_DEST" ]] && [[ ! -L "$HOOK_DEST" ]]; then
   echo "Backed up existing hook to $backup"
 fi
 
-[[ ! -L "$HOOK_DEST" ]] || rm "$HOOK_DEST"
-cp -f "$HOOK_SRC" "$HOOK_DEST"
-chmod +x "$HOOK_DEST"
+python3 -c "
+import os
+data = open('''$HOOK_SRC''', 'rb').read()
+fd = os.open('''$HOOK_DEST''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
+os.write(fd, data)
+os.close(fd)
+" 2>/dev/null || {
+  rm -f "$HOOK_DEST" 2>/dev/null
+  python3 -c "
+import os
+data = open('''$HOOK_SRC''', 'rb').read()
+fd = os.open('''$HOOK_DEST''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
+os.write(fd, data)
+os.close(fd)
+"
+}
 echo "Installed $HOOK_DEST"
 
 if [[ -L "$CONFIG_DEST" ]]; then
   rm "$CONFIG_DEST"
-  cp "$CONFIG_SRC" "$CONFIG_DEST"
-  echo "Installed $CONFIG_DEST"
-elif [[ ! -f "$CONFIG_DEST" ]]; then
-  cp "$CONFIG_SRC" "$CONFIG_DEST"
-  echo "Installed $CONFIG_DEST"
-else
-  echo "Left $CONFIG_DEST in place (already exists)"
 fi
+python3 -c "
+import os
+data = open('''$CONFIG_SRC''', 'rb').read()
+fd = os.open('''$CONFIG_DEST''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+os.write(fd, data)
+os.close(fd)
+" 2>/dev/null || {
+  rm -f "$CONFIG_DEST" 2>/dev/null
+  python3 -c "
+import os
+data = open('''$CONFIG_SRC''', 'rb').read()
+fd = os.open('''$CONFIG_DEST''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+os.write(fd, data)
+os.close(fd)
+"
+}
+echo "Installed $CONFIG_DEST"
 
 echo
 echo "Done. The hook runs automatically on every 'omarchy theme set'."

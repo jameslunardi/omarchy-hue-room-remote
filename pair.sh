@@ -124,15 +124,22 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
-[[ ! -L "$STATE_FILE" ]] || rm "$STATE_FILE"
-install -m 600 /dev/null "$STATE_FILE"
-cat > "$STATE_FILE" <<EOF
-{
-  "bridgeIp": "$local_ip",
-  "bridgeId": "$bridge_id",
-  "username": "$username"
+python3 -c "
+import json, os
+fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as f:
+    json.dump({'bridgeIp': '''$local_ip''', 'bridgeId': '''$bridge_id''', 'username': '''$username'''}, f, indent=2)
+    f.write('\n')
+" 2>/dev/null || {
+  rm -f "$STATE_FILE" 2>/dev/null
+  python3 -c "
+import json, os
+fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as f:
+    json.dump({'bridgeIp': '''$local_ip''', 'bridgeId': '''$bridge_id''', 'username': '''$username'''}, f, indent=2)
+    f.write('\n')
+"
 }
-EOF
 ok "Saved config to $STATE_FILE"
 
 if [[ ! -f "$CACERT" ]]; then
