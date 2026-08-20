@@ -7,8 +7,19 @@ HOOK_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/hooks/theme-set.d/45-hue.sh
 
 removed=0
 
+secure_remove() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  local size
+  size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+  if [[ "$size" -gt 0 ]]; then
+    dd if=/dev/zero of="$f" bs=1 count="$size" conv=notrunc 2>/dev/null || true
+  fi
+  rm "$f"
+}
+
 if [[ -f "$STATE_FILE" ]]; then
-  rm "$STATE_FILE"
+  secure_remove "$STATE_FILE"
   echo "Removed $STATE_FILE"
   removed=$((removed + 1))
 fi

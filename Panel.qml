@@ -317,7 +317,10 @@ Panel {
     onFileChanged: reload()
     onLoaded: {
       root.config = HueApi.parseConfig(text())
-      if (root.config) root.refresh()
+      if (root.config) {
+        root.config.username = ""
+        root.refresh()
+      }
     }
     onLoadFailed: root.config = null
   }

@@ -12,6 +12,14 @@ log() {
   printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"
 }
 
+# Ensure log file has restricted permissions before first write
+if [[ ! -f "$LOG_FILE" ]]; then
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE" 2>/dev/null
+elif [[ "$(stat -c '%a' "$LOG_FILE" 2>/dev/null)" != "600" ]]; then
+  chmod 600 "$LOG_FILE" 2>/dev/null
+fi
+
 if [[ ! -f "$CREDS_FILE" ]]; then
   exit 0
 fi
@@ -59,6 +67,14 @@ if os.path.isfile(_candidate):
 
 
 def log(msg):
+    try:
+        if not os.path.exists(log_file):
+            open(log_file, "a").close()
+            os.chmod(log_file, 0o600)
+        elif oct(os.stat(log_file).st_mode)[-3:] != "600":
+            os.chmod(log_file, 0o600)
+    except Exception:
+        pass
     try:
         with open(log_file, "a") as f:
             f.write("[%s] %s\n" % (time.strftime("%F %T"), msg))

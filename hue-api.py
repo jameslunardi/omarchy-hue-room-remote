@@ -113,10 +113,14 @@ def main():
         print(json.dumps(_request("/groups", creds)))
     elif op == "put-light" and len(sys.argv) >= 4:
         light_id = sys.argv[2]
+        if not re.fullmatch(r'[0-9]+', light_id):
+            return
         state = json.loads(sys.argv[3])
         _put(creds, "/lights/%s/state" % light_id, state)
     elif op == "put-group" and len(sys.argv) >= 4:
         group_id = sys.argv[2]
+        if not re.fullmatch(r'[0-9]+', group_id):
+            return
         action = json.loads(sys.argv[3])
         _put(creds, "/groups/%s/action" % group_id, action)
     elif op == "verify":

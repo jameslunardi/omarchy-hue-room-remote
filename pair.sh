@@ -38,18 +38,21 @@ print(ips[0] if ips else '')
 
 fetch_bridge_id() {
   local ip="$1" bridge_id
-  bridge_id=$(python3 - "
-import json, ssl, sys, urllib.request
-ctx = ssl.create_default_context(cafile=\"$CACERT\")
+  bridge_id=$(CACERT="$CACERT" TARGET_IP="$ip" python3 - <<'PY' 2>/dev/null || true
+import json, os, ssl, sys, urllib.request
+cacert = os.environ["CACERT"]
+target = os.environ["TARGET_IP"]
+ctx = ssl.create_default_context(cafile=cacert)
 ctx.check_hostname = False
 try:
-    with urllib.request.urlopen(\"https://$ip/api/config\", timeout=5, context=ctx) as r:
+    with urllib.request.urlopen("https://%s/api/config" % target, timeout=5, context=ctx) as r:
         d = json.load(r)
-        bid = d.get(\"bridgeid\", \"\")
-        print(bid.lower() if bid else \"\")
+        bid = d.get("bridgeid", "")
+        print(bid.lower() if bid else "")
 except Exception:
     pass
-" 2>/dev/null || true)
+PY
+  )
   printf '%s\n' "$bridge_id"
 }
 
@@ -121,13 +124,7 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
-if [[ -f "$STATE_FILE" ]]; then
-  current_perms=$(stat -c '%a' "$STATE_FILE" 2>/dev/null || echo "000")
-  if [[ "$current_perms" != "600" ]]; then
-    chmod 600 "$STATE_FILE"
-  fi
-fi
-umask 077
+install -m 600 /dev/null "$STATE_FILE"
 cat > "$STATE_FILE" <<EOF
 {
   "bridgeIp": "$local_ip",
@@ -135,7 +132,6 @@ cat > "$STATE_FILE" <<EOF
   "username": "$username"
 }
 EOF
-chmod 600 "$STATE_FILE"
 ok "Saved config to $STATE_FILE"
 
 if [[ ! -f "$CACERT" ]]; then
