@@ -33,13 +33,13 @@ if [[ -f "$STATE_FILE" ]]; then
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
-  rm "$CONFIG_FILE"
+  rm -f "$CONFIG_FILE"
   echo "Removed $CONFIG_FILE"
   removed=$((removed + 1))
 fi
 
 if [[ -f "$HOOK_FILE" ]]; then
-  rm "$HOOK_FILE"
+  rm -f "$HOOK_FILE"
   echo "Removed $HOOK_FILE"
   removed=$((removed + 1))
 fi
