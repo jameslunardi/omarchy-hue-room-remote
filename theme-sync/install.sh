@@ -17,6 +17,7 @@ mkdir -p "$HOOK_DIR" "$CONFIG_DIR"
 
 if [[ -f "$HOOK_DEST" ]] && [[ ! -L "$HOOK_DEST" ]]; then
   backup="$HOOK_DEST.bak.$(date +%s)"
+  [[ ! -L "$backup" ]] || rm "$backup"
   cp -f "$HOOK_DEST" "$backup"
   echo "Backed up existing hook to $backup"
 fi
