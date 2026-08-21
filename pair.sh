@@ -48,7 +48,9 @@ try:
     with urllib.request.urlopen("https://%s/api/config" % target, timeout=5, context=ctx) as r:
         d = json.load(r)
         bid = d.get("bridgeid", "")
-        print(bid.lower() if bid else "")
+        bid = bid.lower() if bid else ""
+        if all(c in "0123456789abcdef" for c in bid) and len(bid) == 16:
+            print(bid)
 except Exception:
     pass
 PY
@@ -68,7 +70,9 @@ try:
     d = json.load(sys.stdin)
     for item in d:
         if isinstance(item, dict) and 'success' in item and 'username' in item['success']:
-            print(item['success']['username'])
+            u = item['success']['username']
+            if len(u) == 40 and all(c in '0123456789abcdef' for c in u):
+                print(u)
             break
 except Exception:
     pass
@@ -124,19 +128,19 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
-python3 -c "
-import json, os
+HUE_IP="$local_ip" HUE_ID="$bridge_id" HUE_USER="$username" python3 -c "
+import json, os, sys
 fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': '''$local_ip''', 'bridgeId': '''$bridge_id''', 'username': '''$username'''}, f, indent=2)
+    json.dump({'bridgeIp': os.environ['HUE_IP'], 'bridgeId': os.environ['HUE_ID'], 'username': os.environ['HUE_USER']}, f, indent=2)
     f.write('\n')
 " 2>/dev/null || {
   rm -f "$STATE_FILE" 2>/dev/null
-  python3 -c "
-import json, os
+  HUE_IP="$local_ip" HUE_ID="$bridge_id" HUE_USER="$username" python3 -c "
+import json, os, sys
 fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': '''$local_ip''', 'bridgeId': '''$bridge_id''', 'username': '''$username'''}, f, indent=2)
+    json.dump({'bridgeIp': os.environ['HUE_IP'], 'bridgeId': os.environ['HUE_ID'], 'username': os.environ['HUE_USER']}, f, indent=2)
     f.write('\n')
 "
 }
