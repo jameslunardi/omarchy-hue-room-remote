@@ -128,19 +128,21 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
-HUE_IP="$local_ip" HUE_ID="$bridge_id" HUE_USER="$username" python3 -c "
+printf '%s\n%s\n%s\n' "$local_ip" "$bridge_id" "$username" | python3 -c "
 import json, os, sys
+bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
 fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': os.environ['HUE_IP'], 'bridgeId': os.environ['HUE_ID'], 'username': os.environ['HUE_USER']}, f, indent=2)
+    json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
     f.write('\n')
 " 2>/dev/null || {
   rm -f "$STATE_FILE" 2>/dev/null
-  HUE_IP="$local_ip" HUE_ID="$bridge_id" HUE_USER="$username" python3 -c "
+  printf '%s\n%s\n%s\n' "$local_ip" "$bridge_id" "$username" | python3 -c "
 import json, os, sys
+bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
 fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': os.environ['HUE_IP'], 'bridgeId': os.environ['HUE_ID'], 'username': os.environ['HUE_USER']}, f, indent=2)
+    json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
     f.write('\n')
 "
 }
