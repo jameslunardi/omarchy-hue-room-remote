@@ -127,7 +127,21 @@ plugin so no auth token is left behind.
 
 ## Notes
 
-- Speaks to the bridge over plain HTTP on your LAN with the v1 API
+- Speaks to the bridge over **HTTPS** on your LAN with the v1 API
   (`/api/<username>/lights`, `/groups`, etc.) — no cloud, no SDK.
+- TLS is verified with the bundled `hue_bridge_cacert.pem`, the official
+  Philips Hue root CA from Signify. During pairing, the bridge's unique ID
+  is read from `/api/config` and saved as `bridgeId` in `hue.json`; requests
+  are then addressed to that ID so the bridge certificate's hostname is
+  matched, while the connection itself goes straight to the bridge's IP.
+- Automatic discovery uses Philips' hosted lookup once; pass an IP directly
+  to `pair.sh` to skip it.
+- If `bridgeId` is missing (e.g. from an older config), the panel warns
+  "TLS verification disabled" — re-run `pair.sh` to restore full
+  certificate verification.
+- Uses the classic v1 local API, which every current bridge still serves —
+  including the 2025 Bridge Pro (HTTPS-only, `apiversion` 1.73.x). New Hue
+  features ship exclusively in the v2 API and Signify has said v1 will be
+  removed long-term, but no end-of-life date has been announced.
 - Credentials are stored per-user in `~/.local/state/omarchy/settings/hue.json`;
   keep that file out of version control.
