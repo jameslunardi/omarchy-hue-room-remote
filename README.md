@@ -50,6 +50,21 @@ A theme-set hook (`45-hue.sh`, vendored in `theme-sync/`) recolors every
 room/zone to the active theme's `accent` whenever you run `omarchy theme set`.
 The bar widget picks the change up within its 15 s poll.
 
+### Per-room opt-out
+
+Each room that is switched on gets a **Theme Sync** toggle in the panel,
+right below its own toggle. Every room starts out synced; toggling a room
+off excludes it from theme changes until you re-enable it.
+
+While a room is synced, its lights' color wheel and color temperature
+slider are hidden in the panel — the hook owns their color, so manual
+picking would be overwritten anyway. Rooms with sync off keep full manual
+control.
+
+The toggle states live under the `themeSync` key of `hue-theme.json`
+(missing room = enabled), and are picked up by the hook immediately — no
+restart needed.
+
 ### Install
 
 The repo ships everything needed under `theme-sync/`:
@@ -81,7 +96,8 @@ Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
   "groups": ["all"],
   "bri": null,
   "turnOn": false,
-  "themes": {}
+  "themes": {},
+  "themeSync": {}
 }
 ```
 
@@ -90,6 +106,7 @@ Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
 - `bri` — optional forced brightness (1–254); leave `null` to keep each light's current brightness
 - `turnOn` — `true` to turn lights on when syncing; `false` leaves on/off state untouched
 - `themes` — per-theme hex overrides, e.g. `{ "spacehaven": "#0c8184" }`; themes without an override use their own `accent`
+- `themeSync` — per-room opt-out map written by the panel's Theme Sync toggles, e.g. `{ "kitchen": false }`; rooms missing from the map are synced
 
 Test the hook without changing your theme:
 
