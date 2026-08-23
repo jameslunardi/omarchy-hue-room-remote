@@ -610,29 +610,51 @@ Panel {
                 width: parent.width
                 spacing: Style.space(4)
 
-                Toggle {
+                Row {
                   width: parent.width
-                  label: modelData.name
-                  description: modelData.lightCount + " light" + (modelData.lightCount === 1 ? "" : "s")
-                  checked: modelData.on
-                  foreground: root.bar.foreground
-                  accent: Color.accent
-                  fontFamily: root.bar.fontFamily
-                  onClicked: root.toggleRoom(modelData.id, !modelData.on)
-                }
-                Toggle {
-                  width: parent.width
-                  label: "Theme Sync"
-                  checked: root.themeSync[modelData.id] !== false
-                  foreground: root.bar.foreground
-                  accent: Color.accent
-                  fontFamily: root.bar.fontFamily
-                  onClicked: {
-                    var ts = JSON.parse(JSON.stringify(root.themeSync))
-                    ts[modelData.id] = ts[modelData.id] === false
-                    root.themeSync = ts
-                    actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
-                    actionProc.running = true
+                  spacing: Style.space(6)
+
+                  Toggle {
+                    width: parent.width - (modelData.on ? syncIndicator.width + parent.spacing : 0)
+                    label: modelData.name
+                    description: modelData.lightCount + " light" + (modelData.lightCount === 1 ? "" : "s")
+                    checked: modelData.on
+                    foreground: root.bar.foreground
+                    accent: Color.accent
+                    fontFamily: root.bar.fontFamily
+                    onClicked: root.toggleRoom(modelData.id, !modelData.on)
+                  }
+
+                  Rectangle {
+                    id: syncIndicator
+                    width: Style.space(28)
+                    height: Style.space(28)
+                    radius: width / 2
+                    visible: modelData.on
+                    color: root.themeSync[modelData.id] !== false
+                      ? Color.accent
+                      : Qt.darker(root.bar.foreground, 1.6)
+                    opacity: root.themeSync[modelData.id] !== false ? 1.0 : 0.5
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: "󰒓"
+                      color: "#ffffff"
+                      font.family: root.bar.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        var ts = JSON.parse(JSON.stringify(root.themeSync))
+                        ts[modelData.id] = ts[modelData.id] === false
+                        root.themeSync = ts
+                        actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
+                        actionProc.running = true
+                      }
+                    }
                   }
                 }
 
