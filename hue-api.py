@@ -105,6 +105,11 @@ def main():
     if len(sys.argv) < 2:
         return
     op = sys.argv[1]
+
+    if op == "write-theme-config" and len(sys.argv) >= 3:
+        _write_theme_config(sys.argv[2])
+        return
+
     creds = _load_creds()
 
     if op == "get-lights":
@@ -126,6 +131,44 @@ def main():
     elif op == "verify":
         lights = _request("/lights", creds)
         print(len(lights))
+
+
+def _write_theme_config(ts_json):
+    ts = json.loads(ts_json)
+    if not isinstance(ts, dict):
+        return
+    for rid in ts:
+        if not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}', str(rid)):
+            return
+        if not isinstance(ts[rid], bool):
+            return
+    config_path = os.path.join(
+        os.path.expanduser("~"), ".config/omarchy/settings/hue-theme.json")
+    cfg = {}
+    try:
+        fd = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            with os.fdopen(fd) as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+    except (OSError, ValueError):
+        pass
+    cfg["themeSync"] = ts
+    try:
+        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            fd = os.open(config_path, os.O_WRONLY | os.O_NOFOLLOW)
+        except (OSError, ValueError):
+            try:
+                os.remove(config_path)
+            except OSError:
+                pass
+            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        json.dump(cfg, f, indent=2)
+        f.write('\n')
 
 
 if __name__ == "__main__":

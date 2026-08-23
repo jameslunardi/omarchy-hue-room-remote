@@ -333,6 +333,23 @@ Panel {
     onLoaded: root.currentThemeName = String(text()).trim()
   }
 
+  property var themeSync: ({})
+  property FileView themeConfigFile: FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-theme.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        var parsed = JSON.parse(text())
+        root.themeSync = parsed.themeSync || {}
+      } catch (e) {
+        root.themeSync = {}
+      }
+    }
+    onLoadFailed: root.themeSync = {}
+  }
+
   Timer {
     interval: 1500
     running: true
@@ -602,6 +619,21 @@ Panel {
                   accent: Color.accent
                   fontFamily: root.bar.fontFamily
                   onClicked: root.toggleRoom(modelData.id, !modelData.on)
+                }
+                Toggle {
+                  width: parent.width
+                  label: "Theme Sync"
+                  checked: root.themeSync[modelData.id] !== false
+                  foreground: root.bar.foreground
+                  accent: Color.accent
+                  fontFamily: root.bar.fontFamily
+                  onClicked: {
+                    var ts = JSON.parse(JSON.stringify(root.themeSync))
+                    ts[modelData.id] = ts[modelData.id] === false
+                    root.themeSync = ts
+                    actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
+                    actionProc.running = true
+                  }
                 }
 
                 Repeater {

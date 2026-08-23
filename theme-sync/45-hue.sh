@@ -250,6 +250,10 @@ if configured and "all" not in configured:
 else:
     targets = [gid for gid, g in groups.items() if room_or_zone(g)]
 
+# Per-room theme sync toggle: filter targets based on themeSync dict
+theme_sync = cfg.get("themeSync") or {}
+targets = [gid for gid in targets if theme_sync.get(gid, True)]
+
 body = {"hue": hue, "sat": sat, "transitiontime": transition}
 if cfg.get("bri") is not None:
     body["bri"] = int(max(1, min(254, cfg["bri"])))
