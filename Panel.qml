@@ -612,8 +612,7 @@ Panel {
 
                 Toggle {
                   width: parent.width
-                  label: modelData.name
-                  description: modelData.lightCount + " light" + (modelData.lightCount === 1 ? "" : "s")
+                  label: modelData.name + " (" + modelData.lightCount + ")"
                   checked: modelData.on
                   foreground: root.bar.foreground
                   accent: Color.accent
