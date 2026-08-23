@@ -610,36 +610,31 @@ Panel {
                 width: parent.width
                 spacing: Style.space(4)
 
-                Row {
+                Toggle {
                   width: parent.width
-                  spacing: Style.space(4)
+                  label: modelData.name
+                  description: modelData.lightCount + " light" + (modelData.lightCount === 1 ? "" : "s")
+                  checked: modelData.on
+                  foreground: root.bar.foreground
+                  accent: Color.accent
+                  fontFamily: root.bar.fontFamily
+                  onClicked: root.toggleRoom(modelData.id, !modelData.on)
+                }
 
-                  Toggle {
-                    width: modelData.on ? (parent.width - parent.spacing) / 2 : parent.width
-                    label: modelData.name
-                    description: modelData.lightCount + " light" + (modelData.lightCount === 1 ? "" : "s")
-                    checked: modelData.on
-                    foreground: root.bar.foreground
-                    accent: Color.accent
-                    fontFamily: root.bar.fontFamily
-                    onClicked: root.toggleRoom(modelData.id, !modelData.on)
-                  }
-
-                  Toggle {
-                    visible: modelData.on
-                    width: (parent.width - parent.spacing) / 2
-                    label: "Theme Sync"
-                    checked: root.themeSync[modelData.id] !== false
-                    foreground: root.bar.foreground
-                    accent: Color.accent
-                    fontFamily: root.bar.fontFamily
-                    onClicked: {
-                      var ts = JSON.parse(JSON.stringify(root.themeSync))
-                      ts[modelData.id] = ts[modelData.id] === false
-                      root.themeSync = ts
-                      actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
-                      actionProc.running = true
-                    }
+                Toggle {
+                  visible: modelData.on
+                  width: parent.width
+                  label: "Theme Sync"
+                  checked: root.themeSync[modelData.id] !== false
+                  foreground: root.bar.foreground
+                  accent: Color.accent
+                  fontFamily: root.bar.fontFamily
+                  onClicked: {
+                    var ts = JSON.parse(JSON.stringify(root.themeSync))
+                    ts[modelData.id] = ts[modelData.id] === false
+                    root.themeSync = ts
+                    actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
+                    actionProc.running = true
                   }
                 }
 
