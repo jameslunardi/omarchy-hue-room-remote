@@ -85,6 +85,7 @@ mkdir -p ~/.config/omarchy/hooks/theme-set.d ~/.config/omarchy/settings
 cp theme-sync/45-hue.sh ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
 chmod +x ~/.config/omarchy/hooks/theme-set.d/45-hue.sh
 cp -n theme-sync/hue-theme.json ~/.config/omarchy/settings/hue-theme.json
+chmod 600 ~/.config/omarchy/settings/hue-theme.json
 ```
 
 Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:

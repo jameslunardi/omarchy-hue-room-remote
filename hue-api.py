@@ -159,7 +159,8 @@ def _write_theme_config(ts_json):
         fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
         try:
-            fd = os.open(config_path, os.O_WRONLY | os.O_NOFOLLOW)
+            fd = os.open(config_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+            os.fchmod(fd, 0o600)
         except (OSError, ValueError):
             try:
                 os.remove(config_path)
