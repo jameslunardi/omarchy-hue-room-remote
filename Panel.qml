@@ -227,6 +227,10 @@ Panel {
     return null
   }
 
+  function roomSyncOn(roomId) {
+    return root.themeSync[roomId] !== false
+  }
+
   function toggleColorPicker(lightId) {
     var light = root.lightById(lightId)
     if (light) root.patchLights(lightId, { pickerOpen: !light.pickerOpen })
@@ -606,6 +610,7 @@ Panel {
               model: root.roomsWithLights
 
               Column {
+                id: roomColumn
                 required property var modelData
                 width: parent.width
                 spacing: Style.space(2)
@@ -643,6 +648,7 @@ Panel {
                   Column {
                     id: roomLightRow
                     required property var modelData
+                    readonly property bool themeSynced: root.roomSyncOn(roomColumn.modelData.id)
                     width: parent.width
                     spacing: Style.space(1)
 
@@ -664,7 +670,7 @@ Panel {
                       spacing: Style.space(8)
 
                       PanelSlider {
-                        width: parent.width - Style.space(30)
+                        width: roomLightRow.themeSynced ? parent.width : parent.width - Style.space(30)
                         bar: root.bar
                         minimum: 1
                         maximum: 254
@@ -675,6 +681,7 @@ Panel {
                       }
 
                       Item {
+                        visible: !roomLightRow.themeSynced
                         width: Style.space(22)
                         height: Style.space(22)
 
@@ -705,13 +712,14 @@ Panel {
                       lightOn: modelData.on
                       hasColor: modelData.hasColor
                       pickerOpen: modelData.pickerOpen
+                      themeSynced: roomLightRow.themeSynced
                       initialHue: modelData.hue
                       initialSat: modelData.sat
                       onColorSelected: function(hue, sat) { root.setLightColor(modelData.id, hue, sat) }
                     }
 
                     PanelSlider {
-                      visible: modelData.on && modelData.hasCt
+                      visible: modelData.on && modelData.hasCt && !roomLightRow.themeSynced
                       width: parent.width - Style.space(24)
                       anchors.horizontalCenter: parent.horizontalCenter
                       bar: root.bar

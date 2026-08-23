@@ -12,7 +12,8 @@ Omarchy / Quickshell bar widget for controlling Philips Hue lights over the brid
 - Toggle all rooms, individual rooms, or single lights
 - Per-light brightness slider
 - Per-light color temperature slider (warm ⇄ cool white)
-- Per-light color wheel picker (hue + saturation)
+- Per-light color wheel picker (hue + saturation) and color temperature slider;
+  both hidden for lights in rooms with theme sync enabled
 - Reads credentials from `~/.local/state/omarchy/settings/hue.json`
 - Retries / re-fetches state automatically after every change
 

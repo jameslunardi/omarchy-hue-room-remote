@@ -3,7 +3,7 @@ import qs.Ui
 
 Item {
   id: root
-  visible: lightOn && hasColor && pickerOpen
+  visible: lightOn && hasColor && pickerOpen && !themeSynced
   width: Style.space(180)
   height: Style.space(180)
   anchors.horizontalCenter: parent.horizontalCenter
@@ -11,6 +11,7 @@ Item {
   property bool lightOn: true
   property bool hasColor: false
   property bool pickerOpen: false
+  property bool themeSynced: false
   property real initialHue: 0
   property real initialSat: 0
   signal colorSelected(real hue, real sat)
