@@ -444,7 +444,7 @@ Panel {
         Column {
           id: column
           width: scroll.width
-          spacing: Style.space(12)
+          spacing: Style.space(6)
 
           Row {
             width: parent.width
@@ -490,7 +490,7 @@ Panel {
           Column {
             visible: root.config === null
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.space(4)
 
             Text {
               width: parent.width
@@ -541,7 +541,7 @@ Panel {
 
           Row {
             visible: root.config !== null && root.loading && root.roomCount === 0 && root.orphanLights.length === 0
-            spacing: Style.space(8)
+            spacing: Style.space(4)
 
             Text {
               text: "󰦖"
@@ -608,7 +608,7 @@ Panel {
               Column {
                 required property var modelData
                 width: parent.width
-                spacing: Style.space(4)
+                spacing: Style.space(2)
 
                 Toggle {
                   width: parent.width
@@ -644,7 +644,7 @@ Panel {
                     id: roomLightRow
                     required property var modelData
                     width: parent.width
-                    spacing: Style.space(2)
+                    spacing: Style.space(1)
 
                     Toggle {
                       width: parent.width
@@ -731,7 +731,7 @@ Panel {
           Column {
             visible: root.config !== null && root.orphanLights.length > 0
             width: parent.width
-            spacing: Style.space(4)
+            spacing: Style.space(2)
 
             Text {
               text: "Other lights"
