@@ -50,11 +50,26 @@ Panel {
   function resolveDefaultView() {
     root.activeRoomId = root.favoriteRoomId
     root.activeView = root.favoriteRoomId ? "room" : "list"
+    if (root.favoriteRoomId) root.refreshRoomBrightness(root.favoriteRoomId)
   }
 
   function openRoom(roomId) {
     root.activeView = "room"
     root.activeRoomId = roomId
+    root.refreshRoomBrightness(roomId)
+  }
+
+  // A group's action.bri (used to seed visibleRooms.bri from get-groups) is
+  // just the bridge's record of the last command sent to the group, not a
+  // reliable read of real current brightness -- it's frequently stale or
+  // never-set. The only trustworthy source is each light's own state.bri, so
+  // this does a one-off get-lights fetch scoped to whichever room is being
+  // looked at, rather than pulling all lights on every poll cycle.
+  function refreshRoomBrightness(roomId) {
+    if (!root.config || roomLightsProc.running) return
+    roomLightsProc.forRoomId = roomId
+    roomLightsProc.command = HueApi.apiCmd(["get-lights"])
+    roomLightsProc.running = true
   }
 
   function openList() {
@@ -147,6 +162,7 @@ Panel {
       // rather than just switching them on at whatever raw state they were
       // last left in.
       root.queueAction("put-group", roomId, { scene: root.lastSceneByRoom[roomId] })
+      root.scheduleBrightnessRefresh(roomId)
     } else {
       root.queueAction("put-group", roomId, { on: on })
     }
@@ -170,6 +186,16 @@ Panel {
     root.patchRoom(roomId, { on: true })
     root.queueAction("put-group", roomId, { scene: sceneId })
     root.scheduleRefresh()
+    root.scheduleBrightnessRefresh(roomId)
+  }
+
+  // Scenes (and re-applying one via the room toggle) can set each light to
+  // a different brightness, which we have no way to know client-side. Give
+  // the bridge a moment to actually apply it, then re-derive the room's
+  // displayed brightness from real light state.
+  function scheduleBrightnessRefresh(roomId) {
+    sceneBrightnessTimer.roomId = roomId
+    sceneBrightnessTimer.restart()
   }
 
   function setFavorite(roomId) {
@@ -271,6 +297,13 @@ Panel {
     onTriggered: { dlog("pollTimer fired"); root.refresh() }
   }
 
+  Timer {
+    id: sceneBrightnessTimer
+    property string roomId: ""
+    interval: 900
+    onTriggered: root.refreshRoomBrightness(roomId)
+  }
+
   Process {
     id: groupsProc
     stdout: StdioCollector {
@@ -324,6 +357,25 @@ Panel {
     onExited: function(exitCode) {
       dlog("actionProc exited " + exitCode)
       root.drainActionQueue()
+    }
+  }
+
+  Process {
+    id: roomLightsProc
+    property string forRoomId: ""
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        dlog("roomLightsProc stream finished for " + roomLightsProc.forRoomId + ", text.length=" + text.length)
+        var room = root.findRoom(roomLightsProc.forRoomId)
+        if (room) {
+          var bri = HueApi.roomBrightness(text, room.lightIds)
+          if (bri !== null) root.patchRoom(room.id, { bri: bri })
+        }
+      }
+    }
+    onExited: function(exitCode) {
+      dlog("roomLightsProc exited " + exitCode)
     }
   }
 

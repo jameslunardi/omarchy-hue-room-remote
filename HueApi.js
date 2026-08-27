@@ -89,6 +89,22 @@ function parseScenes(text) {
   return scenes
 }
 
+function roomBrightness(text, lightIds) {
+  var obj = parseJsonObject(text)
+  if (!obj || !lightIds || lightIds.length === 0) return null
+  var total = 0
+  var count = 0
+  for (var i = 0; i < lightIds.length; i++) {
+    var light = obj[lightIds[i]]
+    if (light && light.state && typeof light.state.bri === "number") {
+      total += light.state.bri
+      count++
+    }
+  }
+  if (count === 0) return null
+  return Math.max(1, Math.min(254, Math.round(total / count)))
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     apiCmd: apiCmd,
@@ -97,6 +113,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseConfig: parseConfig,
     parseJsonObject: parseJsonObject,
     parseGroups: parseGroups,
-    parseScenes: parseScenes
+    parseScenes: parseScenes,
+    roomBrightness: roomBrightness
   }
 }

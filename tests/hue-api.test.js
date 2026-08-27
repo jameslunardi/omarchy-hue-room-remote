@@ -91,3 +91,26 @@ test("parseScenes returns an empty list for empty/malformed input", () => {
   assert.deepEqual(HueApi.parseScenes(""), [])
   assert.deepEqual(HueApi.parseScenes("not json"), [])
 })
+
+test("roomBrightness averages the actual state.bri of a room's lights", () => {
+  const text = JSON.stringify({
+    "1": { state: { bri: 100 } },
+    "2": { state: { bri: 200 } },
+    "3": { state: { bri: 50 } } // not in the room, should be ignored
+  })
+  assert.equal(HueApi.roomBrightness(text, ["1", "2"]), 150)
+})
+
+test("roomBrightness clamps to Hue's valid range and skips lights without bri", () => {
+  const text = JSON.stringify({
+    "1": { state: { bri: 999 } },
+    "2": { state: { on: true } } // no bri (on/off-only light), ignored
+  })
+  assert.equal(HueApi.roomBrightness(text, ["1", "2"]), 254)
+})
+
+test("roomBrightness returns null when there's nothing usable", () => {
+  assert.equal(HueApi.roomBrightness(JSON.stringify({}), ["1"]), null)
+  assert.equal(HueApi.roomBrightness("", ["1"]), null)
+  assert.equal(HueApi.roomBrightness(JSON.stringify({ "1": { state: { bri: 10 } } }), []), null)
+})
