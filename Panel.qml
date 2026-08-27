@@ -25,11 +25,11 @@ Panel {
   property bool loading: false
   property bool lastFetchFailed: false
   property var actionQueue: []
+  property var lastSceneByRoom: ({})
 
   readonly property var activeRoom: root.findRoom(root.activeRoomId)
   readonly property int roomCount: root.visibleRooms.length
   readonly property int lightTotal: root.visibleRooms.reduce(function(sum, r) { return sum + r.lightIds.length }, 0)
-  readonly property bool allLightsOn: root.computeAllLightsOn()
   readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
 
   readonly property string statusText: {
@@ -45,14 +45,6 @@ Panel {
       if (root.visibleRooms[i].id === roomId) return root.visibleRooms[i]
     }
     return null
-  }
-
-  function computeAllLightsOn() {
-    if (root.visibleRooms.length === 0) return false
-    for (var i = 0; i < root.visibleRooms.length; i++) {
-      if (!root.visibleRooms[i].on) return false
-    }
-    return true
   }
 
   function resolveDefaultView() {
@@ -150,7 +142,14 @@ Panel {
   function toggleRoom(roomId, on) {
     if (!root.config) return
     root.patchRoom(roomId, { on: on })
-    root.queueAction("put-group", roomId, { on: on })
+    if (on && root.lastSceneByRoom[roomId]) {
+      // Applying the scene both turns the lights on and restores the look,
+      // rather than just switching them on at whatever raw state they were
+      // last left in.
+      root.queueAction("put-group", roomId, { scene: root.lastSceneByRoom[roomId] })
+    } else {
+      root.queueAction("put-group", roomId, { on: on })
+    }
     root.scheduleRefresh()
   }
 
@@ -164,21 +163,12 @@ Panel {
 
   function applyScene(roomId, sceneId) {
     if (!root.config) return
+    var lastScene = {}
+    for (var k in root.lastSceneByRoom) lastScene[k] = root.lastSceneByRoom[k]
+    lastScene[roomId] = sceneId
+    root.lastSceneByRoom = lastScene
+    root.patchRoom(roomId, { on: true })
     root.queueAction("put-group", roomId, { scene: sceneId })
-    root.scheduleRefresh()
-  }
-
-  function toggleAll(on) {
-    if (!root.config || root.visibleRooms.length === 0) return
-    for (var i = 0; i < root.visibleRooms.length; i++) {
-      root.queueAction("put-group", root.visibleRooms[i].id, { on: on })
-    }
-    root.visibleRooms = root.visibleRooms.map(function(r) {
-      var updated = {}
-      for (var k in r) updated[k] = r[k]
-      updated.on = on
-      return updated
-    })
     root.scheduleRefresh()
   }
 
@@ -287,7 +277,23 @@ Panel {
       waitForEnd: true
       onStreamFinished: {
         dlog("groupsProc stream finished, text.length=" + text.length)
-        root.visibleRooms = HueApi.parseGroups(text).filter(function(r) { return r.lightIds.length > 0 })
+        var fetched = HueApi.parseGroups(text).filter(function(r) { return r.lightIds.length > 0 })
+        var knownById = {}
+        for (var i = 0; i < root.visibleRooms.length; i++) knownById[root.visibleRooms[i].id] = root.visibleRooms[i]
+        // A group's `action.bri` on the bridge is just its last-sent command,
+        // not a reliable "current brightness" -- refetching it here would
+        // undo whatever the user (or a scene) just set. on/allOn/lightIds
+        // come from real aggregate state (state.any_on etc.) and are safe
+        // to trust from the bridge; bri is only ever updated by our own
+        // optimistic patches.
+        root.visibleRooms = fetched.map(function(r) {
+          var known = knownById[r.id]
+          if (!known) return r
+          var merged = {}
+          for (var k in r) merged[k] = r[k]
+          merged.bri = known.bri
+          return merged
+        })
         root.finishFetch(true)
       }
     }
@@ -499,17 +505,6 @@ Panel {
             width: parent.width
             spacing: Style.space(6)
 
-            Toggle {
-              visible: root.roomCount > 0
-              width: parent.width
-              label: "All lights"
-              checked: root.allLightsOn
-              foreground: root.bar.foreground
-              accent: Color.accent
-              fontFamily: root.bar.fontFamily
-              onClicked: root.toggleAll(!root.allLightsOn)
-            }
-
             Repeater {
               model: root.visibleRooms
 
@@ -604,7 +599,9 @@ Panel {
           // ---- Room view -------------------------------------------------------
 
           Loader {
+            id: roomLoader
             width: parent.width
+            height: item ? item.implicitHeight : 0
             active: root.config !== null && root.activeView === "room" && root.activeRoom !== null
             sourceComponent: roomViewComponent
           }
