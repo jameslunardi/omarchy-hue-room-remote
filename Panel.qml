@@ -93,11 +93,14 @@ Panel {
       resyncTimer.restart()
       return
     }
+    if (lightsProc.running || groupsProc.running) {
+      dlog("refresh: deferred, fetch already in flight")
+      resyncTimer.restart()
+      return
+    }
     dlog("refresh: starting fetch")
     root.lastFetchFailed = false
     if (root.roomsWithLights.length === 0 && root.orphanLights.length === 0) root.loading = true
-    lightsProc.running = false
-    groupsProc.running = false
     Qt.callLater(startFetches)
   }
 
