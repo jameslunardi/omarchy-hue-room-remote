@@ -84,6 +84,10 @@ Panel {
       configFile.reload()
       return
     }
+    if (actionProc.running || root.actionQueue.length > 0) {
+      resyncTimer.restart()
+      return
+    }
     root.lastFetchFailed = false
     if (root.roomsWithLights.length === 0 && root.orphanLights.length === 0) root.loading = true
     lightsProc.running = false
@@ -373,13 +377,7 @@ Panel {
   Timer {
     id: resyncTimer
     interval: 700
-    onTriggered: {
-      if (actionProc.running || root.actionQueue.length > 0) {
-        resyncTimer.restart()
-        return
-      }
-      root.refresh()
-    }
+    onTriggered: root.refresh()
   }
 
   Timer {
