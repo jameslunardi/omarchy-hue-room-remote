@@ -15,7 +15,6 @@ Panel {
   readonly property var barIdentity: hostWidget || root
 
   property var config: null
-  property string currentThemeName: ""
   property var visibleRooms: []
   property var scenes: []
   property string favoriteRoomId: ""
@@ -246,14 +245,6 @@ Panel {
     onLoadFailed: root.config = null
   }
 
-  property FileView themeNameFile: FileView {
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.currentThemeName = String(text()).trim()
-  }
-
   property FileView favoriteFile: FileView {
     path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-favorite.json"
     watchChanges: true
@@ -427,7 +418,7 @@ Panel {
               spacing: Style.space(2)
 
               Text {
-                text: "Hue Lights" + (root.currentThemeName ? " (" + root.currentThemeName + ")" : "")
+                text: "Hue Lights"
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.title
