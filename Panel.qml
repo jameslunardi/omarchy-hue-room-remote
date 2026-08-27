@@ -79,15 +79,21 @@ Panel {
     root.controller.hide()
   }
 
+  function dlog(msg) {
+    console.log("[hue-debug] " + msg)
+  }
+
   function refresh() {
     if (!root.config) {
       configFile.reload()
       return
     }
     if (actionProc.running || root.actionQueue.length > 0) {
+      dlog("refresh: deferred, queue busy (actionProc.running=" + actionProc.running + " queueLen=" + root.actionQueue.length + ")")
       resyncTimer.restart()
       return
     }
+    dlog("refresh: starting fetch")
     root.lastFetchFailed = false
     if (root.roomsWithLights.length === 0 && root.orphanLights.length === 0) root.loading = true
     lightsProc.running = false
@@ -106,6 +112,7 @@ Panel {
 
   function finishFetch(success) {
     root.pendingFetches--
+    dlog("finishFetch(" + success + ") pendingFetches=" + root.pendingFetches)
     if (success === false) root.lastFetchFailed = true
     if (root.pendingFetches <= 0) {
       root.loading = false
@@ -114,6 +121,7 @@ Panel {
   }
 
   function assembleRooms() {
+    dlog("assembleRooms() rooms=" + root.rooms.length + " lightsById=" + Object.keys(root.lightsById).length)
     var target = root.filterRoomName.trim().toLowerCase()
     var result = []
     for (var i = 0; i < root.rooms.length; i++) {
@@ -302,10 +310,12 @@ Panel {
       var pending = root.actionQueue[i]
       if (pending.op === op && pending.id === targetId) {
         for (var key in body) pending.body[key] = body[key]
+        dlog("queueAction: merged into pending " + op + " " + targetId + " " + JSON.stringify(pending.body))
         return
       }
     }
     root.actionQueue.push({ op: op, id: targetId, body: body })
+    dlog("queueAction: queued " + op + " " + targetId + " " + JSON.stringify(body) + " (queueLen=" + root.actionQueue.length + ")")
     drainActionQueue()
   }
 
@@ -313,6 +323,7 @@ Panel {
     if (actionProc.running) return
     if (root.actionQueue.length === 0) return
     var next = root.actionQueue.shift()
+    dlog("drainActionQueue: starting " + next.op + " " + next.id + " " + JSON.stringify(next.body) + " (queueLen=" + root.actionQueue.length + ")")
     actionProc.command = HueApi.apiCmd([next.op, next.id, JSON.stringify(next.body)])
     actionProc.running = true
   }
@@ -385,7 +396,7 @@ Panel {
     interval: 15000
     repeat: true
     running: root.config !== null
-    onTriggered: root.refresh()
+    onTriggered: { dlog("pollTimer fired"); root.refresh() }
   }
 
   Process {
@@ -393,6 +404,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        dlog("lightsProc stream finished, text.length=" + text.length)
         var lights = HueApi.parseLights(text)
         var byId = {}
         for (var i = 0; i < lights.length; i++) byId[lights[i].id] = lights[i]
@@ -401,6 +413,7 @@ Panel {
       }
     }
     onExited: function(exitCode) {
+      dlog("lightsProc exited " + exitCode)
       if (exitCode !== 0) root.finishFetch(false)
     }
   }
@@ -410,11 +423,13 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        dlog("groupsProc stream finished, text.length=" + text.length)
         root.rooms = HueApi.parseGroups(text)
         root.finishFetch(true)
       }
     }
     onExited: function(exitCode) {
+      dlog("groupsProc exited " + exitCode)
       if (exitCode !== 0) root.finishFetch(false)
     }
   }
@@ -422,6 +437,7 @@ Panel {
   Process {
     id: actionProc
     onExited: function(exitCode) {
+      dlog("actionProc exited " + exitCode)
       root.drainActionQueue()
     }
   }
