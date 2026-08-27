@@ -167,6 +167,7 @@ def _write_theme_config(ts_json):
             return
     config_path = os.path.join(
         os.path.expanduser("~"), ".config/omarchy/settings/hue-theme.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
     cfg = {}
     try:
         fd = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW)
