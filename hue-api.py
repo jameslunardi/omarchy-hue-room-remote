@@ -132,6 +132,9 @@ def _dispatch(op):
     if op == "write-theme-config" and len(sys.argv) >= 3:
         _write_theme_config(sys.argv[2])
         return
+    if op == "write-favorite" and len(sys.argv) >= 4:
+        _write_favorite(sys.argv[3])
+        return
 
     creds = _load_creds()
 
@@ -139,6 +142,8 @@ def _dispatch(op):
         print(json.dumps(_request("/lights", creds)))
     elif op == "get-groups":
         print(json.dumps(_request("/groups", creds)))
+    elif op == "get-scenes":
+        print(json.dumps(_request("/scenes", creds)))
     elif op == "put-light" and len(sys.argv) >= 4:
         light_id = sys.argv[2]
         if not re.fullmatch(r'[0-9]+', light_id):
@@ -194,6 +199,33 @@ def _write_theme_config(ts_json):
     with os.fdopen(fd, 'w') as f:
         json.dump(cfg, f, indent=2)
         f.write('\n')
+
+
+def _write_favorite(body_json):
+    body = json.loads(body_json)
+    if not isinstance(body, dict):
+        return
+    room_id = str(body.get("roomId", ""))
+    if room_id and not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}', room_id):
+        return
+    config_path = os.path.join(
+        os.path.expanduser("~"), ".config/omarchy/settings/hue-favorite.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    payload = json.dumps({"favoriteRoomId": room_id}) + "\n"
+    try:
+        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            fd = os.open(config_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+            os.fchmod(fd, 0o600)
+        except (OSError, ValueError):
+            try:
+                os.remove(config_path)
+            except OSError:
+                pass
+            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(payload)
 
 
 if __name__ == "__main__":

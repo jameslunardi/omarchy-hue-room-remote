@@ -44,36 +44,50 @@ test("parseConfig drops an invalid bridgeId but keeps the rest", () => {
   assert.deepEqual(cfg, { bridgeIp: "1.2.3.4", username: "abc", bridgeId: "" })
 })
 
-test("parseLights clamps bri/ct to Hue's valid ranges and flags capabilities", () => {
-  const lights = HueApi.parseLights(JSON.stringify({
-    "2": { name: "Lamp", state: { on: true, bri: 999, ct: 50, hue: 100, sat: 200 } },
-    "1": { name: "Bulb", state: { on: false } }
-  }))
-  assert.equal(lights.length, 2)
-  // sorted by name: Bulb before Lamp
-  assert.equal(lights[0].name, "Bulb")
-  assert.equal(lights[0].hasBri, false)
-  assert.equal(lights[0].hasColor, false)
-  assert.equal(lights[1].name, "Lamp")
-  assert.equal(lights[1].bri, 254) // clamped from 999
-  assert.equal(lights[1].ct, 153) // clamped from 50
-  assert.equal(lights[1].hasColor, true)
-})
-
 test("parseGroups keeps only Room/Zone types and sorts by name", () => {
   const groups = HueApi.parseGroups(JSON.stringify({
-    "1": { name: "Zeta Room", type: "Room", lights: ["1"] },
-    "2": { name: "Not a room", type: "LightGroup", lights: ["2"] },
-    "3": { name: "Alpha Zone", type: "Zone", lights: [] }
+    "1": { name: "Zeta Room", type: "Room", lights: ["1"], action: { bri: 120 } },
+    "2": { name: "Not a room", type: "LightGroup", lights: ["2"], action: { bri: 50 } },
+    "3": { name: "Alpha Zone", type: "Zone", lights: [], action: { bri: 60 } }
   }))
   assert.equal(groups.length, 2)
   assert.equal(groups[0].name, "Alpha Zone")
   assert.equal(groups[1].name, "Zeta Room")
 })
 
-test("roomLights looks up lights by id and skips ones not found", () => {
-  const byId = { "1": { id: "1", name: "A" } }
-  const room = { lightIds: ["1", "missing"] }
-  const lights = HueApi.roomLights(room, byId)
-  assert.deepEqual(lights, [{ id: "1", name: "A" }])
+test("parseGroups exposes group brightness clamped to Hue's valid range", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Over", type: "Room", lights: ["1"], action: { bri: 999 } },
+    "2": { name: "Under", type: "Room", lights: ["1"], action: { bri: 0 } },
+    "3": { name: "Missing", type: "Room", lights: ["1"] }
+  }))
+  const byName = Object.fromEntries(groups.map(g => [g.name, g]))
+  assert.equal(byName.Over.bri, 254)
+  assert.equal(byName.Under.bri, 1)
+  assert.equal(byName.Missing.bri, 254)
+})
+
+test("parseGroups reports on/off from state.any_on, not action.on", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Room", type: "Room", lights: ["1"], state: { any_on: true, all_on: false }, action: { on: false } }
+  }))
+  assert.equal(groups[0].on, true)
+  assert.equal(groups[0].allOn, false)
+})
+
+test("parseScenes keeps only scenes tied to a group and sorts by name", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s2": { name: "Zen", type: "GroupScene", group: "1" },
+    "s1": { name: "Bright", type: "GroupScene", group: "1" },
+    "s3": { name: "Ungrouped", type: "LightScene", lights: ["1", "2"] }
+  }))
+  assert.deepEqual(scenes, [
+    { id: "s1", name: "Bright", group: "1" },
+    { id: "s2", name: "Zen", group: "1" }
+  ])
+})
+
+test("parseScenes returns an empty list for empty/malformed input", () => {
+  assert.deepEqual(HueApi.parseScenes(""), [])
+  assert.deepEqual(HueApi.parseScenes("not json"), [])
 })

@@ -63,7 +63,65 @@ class WriteThemeConfigTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.config_path()))
 
 
+class WriteFavoriteTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home_patch = mock.patch("os.path.expanduser", side_effect=self._expanduser)
+        self.home_patch.start()
+        self.addCleanup(self.home_patch.stop)
+
+    def _expanduser(self, path):
+        return path.replace("~", self.tmp.name)
+
+    def favorite_path(self):
+        return os.path.join(self.tmp.name, ".config/omarchy/settings/hue-favorite.json")
+
+    def test_creates_missing_settings_directory(self):
+        self.assertFalse(os.path.isdir(os.path.dirname(self.favorite_path())))
+        hue_api._write_favorite(json.dumps({"roomId": "5"}))
+        with open(self.favorite_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"favoriteRoomId": "5"})
+
+    def test_overwrites_existing_favorite(self):
+        os.makedirs(os.path.dirname(self.favorite_path()))
+        with open(self.favorite_path(), "w") as f:
+            json.dump({"favoriteRoomId": "1"}, f)
+        hue_api._write_favorite(json.dumps({"roomId": "2"}))
+        with open(self.favorite_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"favoriteRoomId": "2"})
+
+    def test_empty_room_id_clears_favorite(self):
+        hue_api._write_favorite(json.dumps({"roomId": ""}))
+        with open(self.favorite_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"favoriteRoomId": ""})
+
+    def test_rejects_invalid_room_id_silently(self):
+        hue_api._write_favorite(json.dumps({"roomId": "has space"}))
+        self.assertFalse(os.path.exists(self.favorite_path()))
+
+    def test_rejects_non_dict_payload_silently(self):
+        hue_api._write_favorite(json.dumps(["not", "a", "dict"]))
+        self.assertFalse(os.path.exists(self.favorite_path()))
+
+
 class DispatchValidationTests(unittest.TestCase):
+    def test_get_scenes_requests_scenes_path(self):
+        with mock.patch.object(hue_api, "_load_creds", return_value={}), \
+             mock.patch.object(hue_api, "_request", return_value={}) as request:
+            sys.argv = ["hue-api.py", "get-scenes"]
+            hue_api._dispatch("get-scenes")
+            request.assert_called_once_with("/scenes", {})
+
+    def test_write_favorite_dispatches_with_body_argument(self):
+        with mock.patch.object(hue_api, "_write_favorite") as write_favorite:
+            sys.argv = ["hue-api.py", "write-favorite", "favorite", '{"roomId": "3"}']
+            hue_api._dispatch("write-favorite")
+            write_favorite.assert_called_once_with('{"roomId": "3"}')
+
     def test_put_light_rejects_non_numeric_id(self):
         with mock.patch.object(hue_api, "_load_creds", return_value={}), \
              mock.patch.object(hue_api, "_put") as put:

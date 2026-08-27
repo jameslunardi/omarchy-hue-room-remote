@@ -45,35 +45,6 @@ function parseJsonObject(text) {
   }
 }
 
-function parseLights(text) {
-  var obj = parseJsonObject(text)
-  if (!obj) return []
-  var lights = []
-  for (var id in obj) {
-    if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
-    var light = obj[id]
-    var state = light.state || {}
-    var hasBri = typeof state.bri === "number"
-    var hasCt = typeof state.ct === "number"
-    var hasColor = typeof state.hue === "number" && typeof state.sat === "number"
-    lights.push({
-      id: String(id),
-      name: String(light.name || "Light " + id),
-      on: !!state.on,
-      bri: hasBri ? Math.max(1, Math.min(254, state.bri)) : 0,
-      hasBri: hasBri,
-      ct: hasCt ? Math.max(153, Math.min(500, state.ct)) : 0,
-      hasCt: hasCt,
-      hue: hasColor ? state.hue : 0,
-      sat: hasColor ? state.sat : 0,
-      hasColor: hasColor,
-      pickerOpen: false
-    })
-  }
-  lights.sort(function(a, b) { return a.name.localeCompare(b.name) })
-  return lights
-}
-
 function parseGroups(text) {
   var obj = parseJsonObject(text)
   if (!obj) return []
@@ -83,12 +54,15 @@ function parseGroups(text) {
     var group = obj[id]
     var type = String(group.type || "")
     if (type !== "Room" && type !== "Zone") continue
+    var action = group.action || {}
+    var bri = typeof action.bri === "number" ? action.bri : 254
     groups.push({
       id: String(id),
       name: String(group.name || "Group " + id),
       type: type,
       on: !!(group.state && group.state.any_on),
       allOn: !!(group.state && group.state.all_on),
+      bri: Math.max(1, Math.min(254, bri)),
       lightIds: Array.isArray(group.lights) ? group.lights.map(String) : []
     })
   }
@@ -96,13 +70,23 @@ function parseGroups(text) {
   return groups
 }
 
-function roomLights(room, byId) {
-  var result = []
-  for (var i = 0; i < room.lightIds.length; i++) {
-    var light = byId[room.lightIds[i]]
-    if (light) result.push(light)
+function parseScenes(text) {
+  var obj = parseJsonObject(text)
+  if (!obj) return []
+  var scenes = []
+  for (var id in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+    var scene = obj[id]
+    var group = scene.group !== undefined && scene.group !== null ? String(scene.group) : ""
+    if (!group) continue
+    scenes.push({
+      id: String(id),
+      name: String(scene.name || "Scene " + id),
+      group: group
+    })
   }
-  return result
+  scenes.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  return scenes
 }
 
 if (typeof module !== "undefined" && module.exports) {
@@ -112,8 +96,7 @@ if (typeof module !== "undefined" && module.exports) {
     isValidId: isValidId,
     parseConfig: parseConfig,
     parseJsonObject: parseJsonObject,
-    parseLights: parseLights,
     parseGroups: parseGroups,
-    roomLights: roomLights
+    parseScenes: parseScenes
   }
 }

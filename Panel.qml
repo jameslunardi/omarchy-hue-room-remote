@@ -16,19 +16,19 @@ Panel {
 
   property var config: null
   property string currentThemeName: ""
-  readonly property string filterRoomName: "Dad's Den"
-  property var lightsById: ({})
-  property var rooms: []
-  property var roomsWithLights: []
-  property var orphanLights: []
+  property var visibleRooms: []
+  property var scenes: []
+  property string favoriteRoomId: ""
+  property string activeView: "list" // "list" | "room"
+  property string activeRoomId: ""
   property int pendingFetches: 0
   property bool loading: false
   property bool lastFetchFailed: false
   property var actionQueue: []
 
-  readonly property int roomCount: root.roomsWithLights.length
-  readonly property int lightTotal: root.lightsTotal()
-  readonly property int lightedRoomCount: root.lightedRooms().length
+  readonly property var activeRoom: root.findRoom(root.activeRoomId)
+  readonly property int roomCount: root.visibleRooms.length
+  readonly property int lightTotal: root.visibleRooms.reduce(function(sum, r) { return sum + r.lightIds.length }, 0)
   readonly property bool allLightsOn: root.computeAllLightsOn()
   readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
 
@@ -40,38 +40,44 @@ Panel {
     return roomLabel + " · " + root.lightTotal + " light" + (root.lightTotal === 1 ? "" : "s")
   }
 
+  function findRoom(roomId) {
+    for (var i = 0; i < root.visibleRooms.length; i++) {
+      if (root.visibleRooms[i].id === roomId) return root.visibleRooms[i]
+    }
+    return null
+  }
+
   function computeAllLightsOn() {
-    if (root.lightedRoomCount === 0) return false
-    var rooms = root.lightedRooms()
-    for (var i = 0; i < rooms.length; i++) {
-      if (!rooms[i].on) return false
+    if (root.visibleRooms.length === 0) return false
+    for (var i = 0; i < root.visibleRooms.length; i++) {
+      if (!root.visibleRooms[i].on) return false
     }
     return true
   }
 
-  function lightedRooms() {
-    var result = []
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      if (root.roomsWithLights[i].lightCount > 0) result.push(root.roomsWithLights[i])
-    }
-    return result
+  function resolveDefaultView() {
+    root.activeRoomId = root.favoriteRoomId
+    root.activeView = root.favoriteRoomId ? "room" : "list"
   }
 
-  function lightsTotal() {
-    var total = 0
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      total += root.roomsWithLights[i].lightCount
-    }
-    return total + root.orphanLights.length
+  function openRoom(roomId) {
+    root.activeView = "room"
+    root.activeRoomId = roomId
+  }
+
+  function openList() {
+    root.activeView = "list"
   }
 
   function open() {
     root.controller.show()
+    root.resolveDefaultView()
     root.refresh()
   }
 
   function openFromHotkey() {
     root.controller.show()
+    root.resolveDefaultView()
     root.refresh()
   }
 
@@ -93,24 +99,24 @@ Panel {
       resyncTimer.restart()
       return
     }
-    if (lightsProc.running || groupsProc.running) {
+    if (groupsProc.running || scenesProc.running) {
       dlog("refresh: deferred, fetch already in flight")
       resyncTimer.restart()
       return
     }
     dlog("refresh: starting fetch")
     root.lastFetchFailed = false
-    if (root.roomsWithLights.length === 0 && root.orphanLights.length === 0) root.loading = true
+    if (root.visibleRooms.length === 0) root.loading = true
     Qt.callLater(startFetches)
   }
 
   function startFetches() {
     if (!root.config) return
     root.pendingFetches = 2
-    lightsProc.command = HueApi.apiCmd(["get-lights"])
     groupsProc.command = HueApi.apiCmd(["get-groups"])
-    lightsProc.running = true
+    scenesProc.command = HueApi.apiCmd(["get-scenes"])
     groupsProc.running = true
+    scenesProc.running = true
   }
 
   function finishFetch(success) {
@@ -124,188 +130,62 @@ Panel {
   }
 
   function assembleRooms() {
-    dlog("assembleRooms() rooms=" + root.rooms.length + " lightsById=" + Object.keys(root.lightsById).length)
-    var target = root.filterRoomName.trim().toLowerCase()
-    var result = []
-    for (var i = 0; i < root.rooms.length; i++) {
-      var room = root.rooms[i]
-      if (String(room.name).trim().toLowerCase() !== target) continue
-      var lights = HueApi.roomLights(room, root.lightsById)
-      result.push({ id: room.id, name: room.name, on: room.on, lightCount: lights.length, lights: lights })
-    }
-    root.roomsWithLights = result
-    root.orphanLights = []
-  }
-
-  function lightClone(light, changes) {
-    return {
-      id: light.id,
-      name: light.name,
-      on: changes.on !== undefined ? changes.on : light.on,
-      bri: changes.bri !== undefined ? changes.bri : light.bri,
-      hasBri: light.hasBri,
-      ct: changes.ct !== undefined ? changes.ct : light.ct,
-      hasCt: light.hasCt,
-      hue: changes.hue !== undefined ? changes.hue : light.hue,
-      sat: changes.sat !== undefined ? changes.sat : light.sat,
-      hasColor: light.hasColor,
-      pickerOpen: changes.pickerOpen !== undefined ? changes.pickerOpen : light.pickerOpen
+    dlog("assembleRooms: visibleRooms=" + root.visibleRooms.length + " scenes=" + root.scenes.length)
+    if (root.activeView === "room" && root.findRoom(root.activeRoomId) === null) {
+      dlog("assembleRooms: active room not found, falling back to list")
+      root.activeView = "list"
     }
   }
 
-  function lightCopy(light, on) {
-    return root.lightClone(light, { on: on })
-  }
-
-  function setRoomOn(roomId, on) {
-    var newRooms = []
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      var room = root.roomsWithLights[i]
-      newRooms.push({
-        id: room.id,
-        name: room.name,
-        on: room.id === roomId ? on : room.on,
-        lightCount: room.lightCount,
-        lights: room.id === roomId
-          ? room.lights.map(function(light) { return root.lightCopy(light, on) })
-          : room.lights
-      })
-    }
-    root.roomsWithLights = newRooms
-  }
-
-  function setLightOn(lightId, on) {
-    var newRooms = []
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      var room = root.roomsWithLights[i]
-      newRooms.push({
-        id: room.id,
-        name: room.name,
-        on: room.on,
-        lightCount: room.lightCount,
-        lights: room.lights.map(function(light) {
-          return light.id === lightId ? root.lightCopy(light, on) : light
-        })
-      })
-    }
-    root.roomsWithLights = newRooms
-    root.orphanLights = root.orphanLights.map(function(light) {
-      return light.id === lightId ? root.lightCopy(light, on) : light
+  function patchRoom(roomId, changes) {
+    root.visibleRooms = root.visibleRooms.map(function(r) {
+      if (r.id !== roomId) return r
+      var updated = {}
+      for (var k in r) updated[k] = r[k]
+      for (var k2 in changes) updated[k2] = changes[k2]
+      return updated
     })
-  }
-
-  function patchLights(lightId, changes) {
-    var newRooms = []
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      var room = root.roomsWithLights[i]
-      newRooms.push({
-        id: room.id,
-        name: room.name,
-        on: room.on,
-        lightCount: room.lightCount,
-        lights: room.lights.map(function(light) {
-          return light.id === lightId ? root.lightClone(light, changes) : light
-        })
-      })
-    }
-    root.roomsWithLights = newRooms
-    root.orphanLights = root.orphanLights.map(function(light) {
-      return light.id === lightId ? root.lightClone(light, changes) : light
-    })
-  }
-
-  function setLightBri(lightId, bri) {
-    root.patchLights(lightId, { bri: bri })
-  }
-
-  function setLightCt(lightId, ct) {
-    root.patchLights(lightId, { ct: ct })
-  }
-
-  function patchLightColor(lightId, hue, sat) {
-    root.patchLights(lightId, { hue: hue, sat: sat })
-  }
-
-  function lightById(lightId) {
-    for (var i = 0; i < root.roomsWithLights.length; i++) {
-      var room = root.roomsWithLights[i]
-      for (var j = 0; j < room.lights.length; j++) {
-        if (room.lights[j].id === lightId) return room.lights[j]
-      }
-    }
-    for (var k = 0; k < root.orphanLights.length; k++) {
-      if (root.orphanLights[k].id === lightId) return root.orphanLights[k]
-    }
-    return null
-  }
-
-  function roomSyncOn(roomId) {
-    return root.themeSync[roomId] !== false
-  }
-
-  function toggleColorPicker(lightId) {
-    var light = root.lightById(lightId)
-    if (light) root.patchLights(lightId, { pickerOpen: !light.pickerOpen })
   }
 
   function toggleRoom(roomId, on) {
     if (!root.config) return
-    root.setRoomOn(roomId, on)
+    root.patchRoom(roomId, { on: on })
     root.queueAction("put-group", roomId, { on: on })
     root.scheduleRefresh()
   }
 
-  function toggleLight(lightId, on) {
-    if (!root.config) return
-    root.setLightOn(lightId, on)
-    root.queueAction("put-light", lightId, { on: on })
-    root.scheduleRefresh()
-  }
-
-  function setBrightness(lightId, bri) {
+  function setRoomBrightness(roomId, bri) {
     if (!root.config) return
     var clamped = Math.max(1, Math.min(254, Math.round(bri)))
-    root.setLightBri(lightId, clamped)
-    root.queueAction("put-light", lightId, { bri: clamped })
+    root.patchRoom(roomId, { bri: clamped })
+    root.queueAction("put-group", roomId, { bri: clamped })
     root.scheduleRefresh()
   }
 
-  function setColorTemperature(lightId, ct) {
+  function applyScene(roomId, sceneId) {
     if (!root.config) return
-    var clamped = Math.max(153, Math.min(500, Math.round(ct)))
-    root.setLightCt(lightId, clamped)
-    root.queueAction("put-light", lightId, { ct: clamped })
-    root.scheduleRefresh()
-  }
-
-  function setLightColor(lightId, hue, sat) {
-    if (!root.config) return
-    root.patchLightColor(lightId, hue, sat)
-    root.queueAction("put-light", lightId, { hue: hue, sat: sat })
+    root.queueAction("put-group", roomId, { scene: sceneId })
     root.scheduleRefresh()
   }
 
   function toggleAll(on) {
-    if (!root.config || root.lightedRoomCount === 0) return
-    var rooms = root.lightedRooms()
-    for (var i = 0; i < rooms.length; i++) {
-      root.queueAction("put-group", rooms[i].id, { on: on })
+    if (!root.config || root.visibleRooms.length === 0) return
+    for (var i = 0; i < root.visibleRooms.length; i++) {
+      root.queueAction("put-group", root.visibleRooms[i].id, { on: on })
     }
-    root.setAllOn(on)
+    root.visibleRooms = root.visibleRooms.map(function(r) {
+      var updated = {}
+      for (var k in r) updated[k] = r[k]
+      updated.on = on
+      return updated
+    })
     root.scheduleRefresh()
   }
 
-  function setAllOn(on) {
-    root.roomsWithLights = root.roomsWithLights.map(function(room) {
-      if (room.lightCount === 0) return room
-      return {
-        id: room.id,
-        name: room.name,
-        on: on,
-        lightCount: room.lightCount,
-        lights: room.lights.map(function(light) { return root.lightCopy(light, on) })
-      }
-    })
+  function setFavorite(roomId) {
+    var next = root.favoriteRoomId === roomId ? "" : roomId
+    root.favoriteRoomId = next
+    root.queueAction("write-favorite", "favorite", { roomId: next })
   }
 
   function queueAction(op, targetId, body) {
@@ -358,21 +238,20 @@ Panel {
     onLoaded: root.currentThemeName = String(text()).trim()
   }
 
-  property var themeSync: ({})
-  property FileView themeConfigFile: FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-theme.json"
+  property FileView favoriteFile: FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-favorite.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
       try {
         var parsed = JSON.parse(text())
-        root.themeSync = parsed.themeSync || {}
+        root.favoriteRoomId = String(parsed.favoriteRoomId || "")
       } catch (e) {
-        root.themeSync = {}
+        root.favoriteRoomId = ""
       }
     }
-    onLoadFailed: root.themeSync = {}
+    onLoadFailed: root.favoriteRoomId = ""
   }
 
   Timer {
@@ -403,36 +282,33 @@ Panel {
   }
 
   Process {
-    id: lightsProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        dlog("lightsProc stream finished, text.length=" + text.length)
-        var lights = HueApi.parseLights(text)
-        var byId = {}
-        for (var i = 0; i < lights.length; i++) byId[lights[i].id] = lights[i]
-        root.lightsById = byId
-        root.finishFetch(true)
-      }
-    }
-    onExited: function(exitCode) {
-      dlog("lightsProc exited " + exitCode)
-      if (exitCode !== 0) root.finishFetch(false)
-    }
-  }
-
-  Process {
     id: groupsProc
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         dlog("groupsProc stream finished, text.length=" + text.length)
-        root.rooms = HueApi.parseGroups(text)
+        root.visibleRooms = HueApi.parseGroups(text).filter(function(r) { return r.lightIds.length > 0 })
         root.finishFetch(true)
       }
     }
     onExited: function(exitCode) {
       dlog("groupsProc exited " + exitCode)
+      if (exitCode !== 0) root.finishFetch(false)
+    }
+  }
+
+  Process {
+    id: scenesProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        dlog("scenesProc stream finished, text.length=" + text.length)
+        root.scenes = HueApi.parseScenes(text)
+        root.finishFetch(true)
+      }
+    }
+    onExited: function(exitCode) {
+      dlog("scenesProc exited " + exitCode)
       if (exitCode !== 0) root.finishFetch(false)
     }
   }
@@ -570,7 +446,7 @@ Panel {
           }
 
           Row {
-            visible: root.config !== null && root.loading && root.roomCount === 0 && root.orphanLights.length === 0
+            visible: root.config !== null && root.loading && root.visibleRooms.length === 0
             spacing: Style.space(4)
 
             Text {
@@ -616,275 +492,265 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          Toggle {
-            visible: root.config !== null && root.lightedRoomCount > 0
-            width: parent.width
-            label: "All lights"
-            checked: root.allLightsOn
-            foreground: root.bar.foreground
-            accent: Color.accent
-            fontFamily: root.bar.fontFamily
-            onClicked: root.toggleAll(!root.allLightsOn)
-          }
+          // ---- Room List view ------------------------------------------------
 
           Column {
-            visible: root.config !== null && root.roomCount > 0
+            visible: root.config !== null && root.activeView === "list"
             width: parent.width
-            spacing: Style.space(4)
+            spacing: Style.space(6)
 
-            Repeater {
-              model: root.roomsWithLights
-
-              Column {
-                id: roomColumn
-                required property var modelData
-                width: parent.width
-                spacing: Style.space(2)
-
-                Toggle {
-                  width: parent.width
-                  label: modelData.name + " (" + modelData.lightCount + ")"
-                  checked: modelData.on
-                  foreground: root.bar.foreground
-                  accent: Color.accent
-                  fontFamily: root.bar.fontFamily
-                  onClicked: root.toggleRoom(modelData.id, !modelData.on)
-                }
-
-                Toggle {
-                  visible: modelData.on
-                  width: parent.width
-                  label: "Theme Sync"
-                  checked: root.themeSync[modelData.id] !== false
-                  foreground: root.bar.foreground
-                  accent: Color.accent
-                  fontFamily: root.bar.fontFamily
-                  onClicked: {
-                    var ts = JSON.parse(JSON.stringify(root.themeSync))
-                    ts[modelData.id] = ts[modelData.id] === false
-                    root.themeSync = ts
-                    actionProc.command = HueApi.apiCmd(["write-theme-config", JSON.stringify(ts)])
-                    actionProc.running = true
-                  }
-                }
-
-                Repeater {
-                  model: modelData.lights
-
-                  Column {
-                    id: roomLightRow
-                    required property var modelData
-                    readonly property bool themeSynced: root.roomSyncOn(roomColumn.modelData.id)
-                    width: parent.width
-                    spacing: Style.space(1)
-
-                    Toggle {
-                      width: parent.width
-                      label: modelData.name
-                      titleSize: Style.font.body
-                      checked: modelData.on
-                      foreground: Qt.darker(root.bar.foreground, 1.2)
-                      accent: Color.accent
-                      fontFamily: root.bar.fontFamily
-                      onClicked: root.toggleLight(modelData.id, !modelData.on)
-                    }
-
-                    Row {
-                      visible: modelData.on && modelData.hasColor
-                      width: parent.width - Style.space(24)
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      spacing: Style.space(8)
-
-                      PanelSlider {
-                        width: roomLightRow.themeSynced ? parent.width : parent.width - Style.space(30)
-                        bar: root.bar
-                        minimum: 1
-                        maximum: 254
-                        integer: true
-                        step: 10
-                        value: modelData.bri
-                        onReleased: function(v) { root.setBrightness(modelData.id, v) }
-                      }
-
-                      Item {
-                        visible: !roomLightRow.themeSynced
-                        width: Style.space(22)
-                        height: Style.space(22)
-
-                        Image {
-                          anchors.fill: parent
-                          source: Qt.resolvedUrl("hsv_wheel.png")
-                          fillMode: Image.Stretch
-                          smooth: true
-                        }
-
-                        Rectangle {
-                          anchors.fill: parent
-                          radius: Style.space(11)
-                          border.width: modelData.pickerOpen ? 2 : 1
-                          border.color: modelData.pickerOpen ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
-                          color: "transparent"
-                        }
-
-                        MouseArea {
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: root.toggleColorPicker(modelData.id)
-                        }
-                      }
-                    }
-
-                    ColorWheel {
-                      lightOn: modelData.on
-                      hasColor: modelData.hasColor
-                      pickerOpen: modelData.pickerOpen
-                      themeSynced: roomLightRow.themeSynced
-                      initialHue: modelData.hue
-                      initialSat: modelData.sat
-                      onColorSelected: function(hue, sat) { root.setLightColor(modelData.id, hue, sat) }
-                    }
-
-                    PanelSlider {
-                      visible: modelData.on && modelData.hasCt && !roomLightRow.themeSynced
-                      width: parent.width - Style.space(24)
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      bar: root.bar
-                      minimum: 153
-                      maximum: 500
-                      integer: true
-                      step: 10
-                      value: modelData.ct
-                      onReleased: function(v) { root.setColorTemperature(modelData.id, v) }
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          Column {
-            visible: root.config !== null && root.orphanLights.length > 0
-            width: parent.width
-            spacing: Style.space(2)
-
-            Text {
-              text: "Other lights"
-              color: Qt.darker(root.bar.foreground, 1.4)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
-              font.letterSpacing: 1
-              font.bold: true
+            Toggle {
+              visible: root.roomCount > 0
+              width: parent.width
+              label: "All lights"
+              checked: root.allLightsOn
+              foreground: root.bar.foreground
+              accent: Color.accent
+              fontFamily: root.bar.fontFamily
+              onClicked: root.toggleAll(!root.allLightsOn)
             }
 
             Repeater {
-              model: root.orphanLights
+              model: root.visibleRooms
 
-              Column {
-                id: orphanLightRow
+              Rectangle {
+                id: roomRow
                 required property var modelData
                 width: parent.width
-                spacing: Style.space(2)
+                height: Math.max(48, roomRowContent.implicitHeight + Style.space(16))
+                radius: Style.space(8)
+                color: roomRowMouse.containsMouse
+                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
+                  : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+                border.width: 1
+                border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, roomRowMouse.containsMouse ? 0.28 : 0.14)
 
-                Toggle {
-                  width: parent.width
-                  label: modelData.name
-                  titleSize: Style.font.body
-                  checked: modelData.on
-                  foreground: Qt.darker(root.bar.foreground, 1.2)
-                  accent: Color.accent
-                  fontFamily: root.bar.fontFamily
-                  onClicked: root.toggleLight(modelData.id, !modelData.on)
-                }
-
-                PanelSlider {
-                  visible: modelData.on && modelData.hasBri
-                  width: parent.width - Style.space(24)
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  bar: root.bar
-                  minimum: 1
-                  maximum: 254
-                  integer: true
-                  step: 10
-                  value: modelData.bri
-                  onReleased: function(v) { root.setBrightness(modelData.id, v) }
+                MouseArea {
+                  id: roomRowMouse
+                  anchors.left: parent.left
+                  anchors.right: starIcon.left
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.openRoom(roomRow.modelData.id)
                 }
 
                 Row {
-                  visible: modelData.on && modelData.hasColor
-                  width: parent.width - Style.space(24)
-                  anchors.horizontalCenter: parent.horizontalCenter
+                  id: roomRowContent
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(12)
+                  anchors.right: starIcon.left
+                  anchors.rightMargin: Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.space(8)
 
-                  PanelSlider {
-                    width: parent.width - Style.space(30)
-                    bar: root.bar
-                    minimum: 1
-                    maximum: 254
-                    integer: true
-                    step: 10
-                    value: modelData.bri
-                    onReleased: function(v) { root.setBrightness(modelData.id, v) }
+                  Text {
+                    text: roomRow.modelData.name
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                    elide: Text.ElideRight
+                    anchors.verticalCenter: parent.verticalCenter
                   }
 
-                  Item {
-                    width: Style.space(22)
-                    height: Style.space(22)
+                  Text {
+                    text: roomRow.modelData.lightIds.length + (roomRow.modelData.lightIds.length === 1 ? " light" : " lights")
+                    color: Qt.darker(root.bar.foreground, 1.4)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.caption
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
 
-                    Image {
-                      anchors.fill: parent
-                      source: Qt.resolvedUrl("hsv_wheel.png")
-                      fillMode: Image.Stretch
-                      smooth: true
-                    }
-
-                    Rectangle {
-                      anchors.fill: parent
-                      radius: Style.space(11)
-                      border.width: modelData.pickerOpen ? 2 : 1
-                      border.color: modelData.pickerOpen ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
-                      color: "transparent"
-                    }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: root.toggleColorPicker(modelData.id)
-                    }
+                  Text {
+                    text: roomRow.modelData.on ? "On" : "Off"
+                    color: roomRow.modelData.on ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.caption
+                    anchors.verticalCenter: parent.verticalCenter
                   }
                 }
 
-                ColorWheel {
-                  lightOn: modelData.on
-                  hasColor: modelData.hasColor
-                  pickerOpen: modelData.pickerOpen
-                  initialHue: modelData.hue
-                  initialSat: modelData.sat
-                  onColorSelected: function(hue, sat) { root.setLightColor(modelData.id, hue, sat) }
-                }
+                Text {
+                  id: starIcon
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(12)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: roomRow.modelData.id === root.favoriteRoomId ? "★" : "☆"
+                  color: roomRow.modelData.id === root.favoriteRoomId ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
+                  font.pixelSize: Style.font.title
 
-                PanelSlider {
-                  visible: modelData.on && modelData.hasCt
-                  width: parent.width - Style.space(24)
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  bar: root.bar
-                  minimum: 153
-                  maximum: 500
-                  integer: true
-                  step: 10
-                  value: modelData.ct
-                  onReleased: function(v) { root.setColorTemperature(modelData.id, v) }
+                  MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -Style.space(6)
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.setFavorite(roomRow.modelData.id)
+                  }
                 }
               }
             }
+
+            Text {
+              visible: root.config !== null && !root.loading && !root.lastFetchFailed && root.roomCount === 0
+              text: "No rooms with lights found."
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
 
+          // ---- Room view -------------------------------------------------------
+
+          Loader {
+            width: parent.width
+            active: root.config !== null && root.activeView === "room" && root.activeRoom !== null
+            sourceComponent: roomViewComponent
+          }
+        }
+      }
+    }
+  }
+
+  Component {
+    id: roomViewComponent
+
+    Column {
+      width: parent.width
+      spacing: Style.space(8)
+
+      Item {
+        width: parent.width
+        height: Style.space(32)
+
+        Rectangle {
+          id: backBtn
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          width: backText.implicitWidth + Style.space(20)
+          height: parent.height
+          radius: Style.space(6)
+          color: backMouse.containsMouse
+            ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
+            : "transparent"
+          border.width: 1
+          border.color: Qt.darker(root.bar.foreground, 1.6)
+
           Text {
-            visible: root.config !== null && !root.loading && !root.lastFetchFailed && root.roomCount === 0 && root.orphanLights.length === 0
-            text: "No lights found on this bridge."
-            color: Qt.darker(root.bar.foreground, 1.4)
+            id: backText
+            anchors.centerIn: parent
+            text: "‹ Rooms"
+            color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
           }
+
+          MouseArea {
+            id: backMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openList()
+          }
+        }
+
+        Text {
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.activeRoomId === root.favoriteRoomId ? "★" : "☆"
+          color: root.activeRoomId === root.favoriteRoomId ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
+          font.pixelSize: Style.font.title
+
+          MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Style.space(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.setFavorite(root.activeRoomId)
+          }
+        }
+      }
+
+      Toggle {
+        width: parent.width
+        label: root.activeRoom.name
+        checked: root.activeRoom.on
+        foreground: root.bar.foreground
+        accent: Color.accent
+        fontFamily: root.bar.fontFamily
+        onClicked: root.toggleRoom(root.activeRoomId, !root.activeRoom.on)
+      }
+
+      PanelSlider {
+        visible: root.activeRoom.on
+        width: parent.width - Style.space(24)
+        anchors.horizontalCenter: parent.horizontalCenter
+        bar: root.bar
+        minimum: 1
+        maximum: 254
+        integer: true
+        step: 10
+        value: root.activeRoom.bri
+        onReleased: function(v) { root.setRoomBrightness(root.activeRoomId, v) }
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(6)
+
+        Text {
+          text: "Scenes"
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 1
+          font.bold: true
+        }
+
+        Repeater {
+          model: root.scenes
+
+          Rectangle {
+            id: sceneRow
+            required property var modelData
+            visible: modelData.group === root.activeRoomId
+            width: parent.width
+            height: sceneText.implicitHeight + Style.space(16)
+            radius: Style.space(8)
+            color: sceneMouse.containsMouse
+              ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
+              : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+            border.width: 1
+            border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, sceneMouse.containsMouse ? 0.28 : 0.14)
+
+            Text {
+              id: sceneText
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              text: sceneRow.modelData.name
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: sceneMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.applyScene(root.activeRoomId, sceneRow.modelData.id)
+            }
+          }
+        }
+
+        Text {
+          visible: !root.scenes.some(function(s) { return s.group === root.activeRoomId })
+          text: "No scenes saved for this room."
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
         }
       }
     }
