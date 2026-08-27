@@ -1,4 +1,6 @@
-var API = Qt.resolvedUrl("hue-api.py").toString().replace("file://", "")
+var API = typeof Qt !== "undefined"
+  ? Qt.resolvedUrl("hue-api.py").toString().replace("file://", "")
+  : "hue-api.py"
 
 function apiCmd(args) {
   var cmd = ["python3", API]
@@ -101,4 +103,17 @@ function roomLights(room, byId) {
     if (light) result.push(light)
   }
   return result
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    apiCmd: apiCmd,
+    isValidIp: isValidIp,
+    isValidId: isValidId,
+    parseConfig: parseConfig,
+    parseJsonObject: parseJsonObject,
+    parseLights: parseLights,
+    parseGroups: parseGroups,
+    roomLights: roomLights
+  }
 }
