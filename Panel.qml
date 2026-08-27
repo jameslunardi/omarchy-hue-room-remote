@@ -16,6 +16,7 @@ Panel {
 
   property var config: null
   property string currentThemeName: ""
+  readonly property string filterRoomName: "Dad's Den"
   property var lightsById: ({})
   property var rooms: []
   property var roomsWithLights: []
@@ -109,20 +110,16 @@ Panel {
   }
 
   function assembleRooms() {
-    var used = {}
+    var target = root.filterRoomName.trim().toLowerCase()
     var result = []
     for (var i = 0; i < root.rooms.length; i++) {
       var room = root.rooms[i]
+      if (String(room.name).trim().toLowerCase() !== target) continue
       var lights = HueApi.roomLights(room, root.lightsById)
-      for (var j = 0; j < room.lightIds.length; j++) used[room.lightIds[j]] = true
       result.push({ id: room.id, name: room.name, on: room.on, lightCount: lights.length, lights: lights })
     }
-    var orphans = []
-    for (var id in root.lightsById) {
-      if (!used[id]) orphans.push(root.lightsById[id])
-    }
     root.roomsWithLights = result
-    root.orphanLights = orphans
+    root.orphanLights = []
   }
 
   function lightClone(light, changes) {

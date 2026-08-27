@@ -14,11 +14,12 @@ ok()   { printf '\033[1;32m::\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m::\033[0m %s\n' "$*" >&2; }
 
 valid_ip() {
-  local IFS='.' parts=($1)
+  local parts
+  IFS='.' read -ra parts <<< "$1"
   [[ ${#parts[@]} -eq 4 ]] || return 1
   for part in "${parts[@]}"; do
     [[ "$part" =~ ^[0-9]{1,3}$ ]] || return 1
-    (( part >= 0 && part <= 255 )) || return 1
+    (( 10#$part >= 0 && 10#$part <= 255 )) || return 1
   done
 }
 
@@ -71,7 +72,8 @@ try:
     for item in d:
         if isinstance(item, dict) and 'success' in item and 'username' in item['success']:
             u = item['success']['username']
-            if len(u) == 40 and all(c in '0123456789abcdef' for c in u):
+            import re
+            if re.fullmatch(r'[a-zA-Z0-9_-]{1,40}', u):
                 print(u)
             break
 except Exception:
