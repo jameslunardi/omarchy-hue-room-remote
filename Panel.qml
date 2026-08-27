@@ -236,14 +236,14 @@ Panel {
   function toggleRoom(roomId, on) {
     if (!root.config) return
     root.setRoomOn(roomId, on)
-    root.runAction(HueApi.apiCmd(["put-group", roomId, JSON.stringify({ on: on })]))
+    root.queueAction("put-group", roomId, { on: on })
     root.scheduleRefresh()
   }
 
   function toggleLight(lightId, on) {
     if (!root.config) return
     root.setLightOn(lightId, on)
-    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ on: on })]))
+    root.queueAction("put-light", lightId, { on: on })
     root.scheduleRefresh()
   }
 
@@ -251,7 +251,7 @@ Panel {
     if (!root.config) return
     var clamped = Math.max(1, Math.min(254, Math.round(bri)))
     root.setLightBri(lightId, clamped)
-    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ bri: clamped })]))
+    root.queueAction("put-light", lightId, { bri: clamped })
     root.scheduleRefresh()
   }
 
@@ -259,23 +259,22 @@ Panel {
     if (!root.config) return
     var clamped = Math.max(153, Math.min(500, Math.round(ct)))
     root.setLightCt(lightId, clamped)
-    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ ct: clamped })]))
+    root.queueAction("put-light", lightId, { ct: clamped })
     root.scheduleRefresh()
   }
 
   function setLightColor(lightId, hue, sat) {
     if (!root.config) return
     root.patchLightColor(lightId, hue, sat)
-    root.runAction(HueApi.apiCmd(["put-light", lightId, JSON.stringify({ hue: hue, sat: sat })]))
+    root.queueAction("put-light", lightId, { hue: hue, sat: sat })
     root.scheduleRefresh()
   }
 
   function toggleAll(on) {
     if (!root.config || root.lightedRoomCount === 0) return
     var rooms = root.lightedRooms()
-    var body = JSON.stringify({ on: on })
     for (var i = 0; i < rooms.length; i++) {
-      root.runAction(HueApi.apiCmd(["put-group", rooms[i].id, body]))
+      root.queueAction("put-group", rooms[i].id, { on: on })
     }
     root.setAllOn(on)
     root.scheduleRefresh()
@@ -294,8 +293,15 @@ Panel {
     })
   }
 
-  function runAction(command) {
-    root.actionQueue.push(command)
+  function queueAction(op, targetId, body) {
+    for (var i = 0; i < root.actionQueue.length; i++) {
+      var pending = root.actionQueue[i]
+      if (pending.op === op && pending.id === targetId) {
+        for (var key in body) pending.body[key] = body[key]
+        return
+      }
+    }
+    root.actionQueue.push({ op: op, id: targetId, body: body })
     drainActionQueue()
   }
 
@@ -303,7 +309,7 @@ Panel {
     if (actionProc.running) return
     if (root.actionQueue.length === 0) return
     var next = root.actionQueue.shift()
-    actionProc.command = next
+    actionProc.command = HueApi.apiCmd([next.op, next.id, JSON.stringify(next.body)])
     actionProc.running = true
   }
 
@@ -367,7 +373,13 @@ Panel {
   Timer {
     id: resyncTimer
     interval: 700
-    onTriggered: root.refresh()
+    onTriggered: {
+      if (actionProc.running || root.actionQueue.length > 0) {
+        resyncTimer.restart()
+        return
+      }
+      root.refresh()
+    }
   }
 
   Timer {
