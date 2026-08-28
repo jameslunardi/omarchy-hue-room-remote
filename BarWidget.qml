@@ -19,6 +19,8 @@ BarWidget {
   }
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  // KeyboardPanel reads popoutSwitchClosing back off its owner.
+  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
 
   function open() {
     if (panelLoader.item && panelLoader.item.open) panelLoader.item.open()
