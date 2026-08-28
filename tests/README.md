@@ -11,7 +11,7 @@ Runs all three layers: Python (`hue-api.py`), JS (`HueApi.js`), and bash
 
 ```
 python3 -m unittest tests.test_hue_api -v
-node --test tests/hue-api.test.js
+node --test tests/HueApi.test.js
 bash tests/test_pair_sh.sh
 ```
 
@@ -21,7 +21,7 @@ pytest/jest/mocha for a plugin this size.
 
 ## What's covered, and what isn't
 
-- **`HueApi.js`** (`hue-api.test.js`): pure functions with no QML
+- **`HueApi.js`** (`HueApi.test.js`): pure functions with no QML
   dependency — `isValidIp`, `isValidId`, `parseConfig`, `parseGroups`,
   `parseScenes`, `roomIcon`, `applyOrder`, `roomBrightness`. The file
   guards its one QML-only call (`Qt.resolvedUrl`) so it loads fine under

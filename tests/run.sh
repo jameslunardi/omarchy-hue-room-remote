@@ -9,7 +9,7 @@ python3 -m unittest tests.test_hue_api -v || status=1
 
 echo
 echo "== JS (HueApi.js) =="
-node --test tests/hue-api.test.js || status=1
+node --test tests/HueApi.test.js || status=1
 
 echo
 echo "== Bash (pair.sh valid_ip) =="
