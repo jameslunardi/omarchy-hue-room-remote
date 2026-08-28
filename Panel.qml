@@ -27,22 +27,27 @@ Panel {
   property var lastSceneByRoom: ({})
   property var roomOrder: []
   property var sceneOrderByRoom: ({})
+  property var hiddenRoomIds: []
+  property bool editMode: false
 
   readonly property var activeRoom: root.findRoom(root.activeRoomId)
   readonly property int roomCount: root.visibleRooms.length
-  readonly property int lightTotal: root.visibleRooms.reduce(function(sum, r) { return sum + r.lightIds.length }, 0)
   readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
   readonly property var orderedRooms: HueApi.applyOrder(root.visibleRooms, root.roomOrder)
   readonly property var orderedScenesForActiveRoom: HueApi.applyOrder(
     root.scenes.filter(function(s) { return s.group === root.activeRoomId }),
     root.sceneOrderByRoom[root.activeRoomId] || [])
+  // Hidden rooms stay out of the list entirely -- except while editing, when
+  // they reappear (dimmed) so there's a way to find and unhide them again.
+  readonly property var displayedRooms: root.editMode
+    ? root.orderedRooms
+    : root.orderedRooms.filter(function(r) { return root.hiddenRoomIds.indexOf(r.id) === -1 })
 
   readonly property string statusText: {
     if (root.config === null) return "Not paired"
     if (root.lastFetchFailed) return "Bridge unreachable"
     if (root.loading) return "Loading…"
-    var roomLabel = root.roomCount + " room" + (root.roomCount === 1 ? "" : "s")
-    return roomLabel + " · " + root.lightTotal + " light" + (root.lightTotal === 1 ? "" : "s")
+    return ""
   }
 
   function findRoom(roomId) {
@@ -227,6 +232,15 @@ Panel {
     root.queueAction("write-order", "order", { sceneOrder: root.sceneOrderByRoom })
   }
 
+  function toggleRoomHidden(roomId) {
+    var hidden = root.hiddenRoomIds.slice()
+    var idx = hidden.indexOf(roomId)
+    if (idx === -1) hidden.push(roomId)
+    else hidden.splice(idx, 1)
+    root.hiddenRoomIds = hidden
+    root.queueAction("write-order", "order", { hiddenRooms: hidden })
+  }
+
   function queueAction(op, targetId, body) {
     for (var i = 0; i < root.actionQueue.length; i++) {
       var pending = root.actionQueue[i]
@@ -293,16 +307,19 @@ Panel {
         root.roomOrder = Array.isArray(parsed.roomOrder) ? parsed.roomOrder.map(String) : []
         root.sceneOrderByRoom = (parsed.sceneOrder && typeof parsed.sceneOrder === "object") ? parsed.sceneOrder : {}
         root.lastSceneByRoom = (parsed.lastScene && typeof parsed.lastScene === "object") ? parsed.lastScene : {}
+        root.hiddenRoomIds = Array.isArray(parsed.hiddenRooms) ? parsed.hiddenRooms.map(String) : []
       } catch (e) {
         root.roomOrder = []
         root.sceneOrderByRoom = {}
         root.lastSceneByRoom = {}
+        root.hiddenRoomIds = []
       }
     }
     onLoadFailed: {
       root.roomOrder = []
       root.sceneOrderByRoom = {}
       root.lastSceneByRoom = {}
+      root.hiddenRoomIds = []
     }
   }
 
@@ -437,38 +454,57 @@ Panel {
           width: scroll.width
           spacing: Style.space(6)
 
-          Row {
+          Item {
             width: parent.width
-            spacing: Style.space(10)
+            height: titleRow.implicitHeight
 
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "󰌵"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.title
-            }
-
-            Column {
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(2)
+            Row {
+              id: titleRow
+              anchors.left: parent.left
+              anchors.right: editModeButton.left
+              anchors.rightMargin: Style.space(8)
+              spacing: Style.space(10)
 
               Text {
-                text: "Hue Lights"
+                anchors.verticalCenter: parent.verticalCenter
+                text: "󰌵"
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.title
-                font.bold: true
               }
 
-              Text {
-                text: root.statusText
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(2)
+
+                Text {
+                  text: "Hue Lights"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+
+                Text {
+                  visible: root.statusText.length > 0
+                  text: root.statusText
+                  color: Qt.darker(root.bar.foreground, 1.4)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
               }
             }
 
+            PanelActionButton {
+              id: editModeButton
+              anchors.right: parent.right
+              anchors.verticalCenter: titleRow.verticalCenter
+              iconText: "⚙"
+              tooltipText: root.editMode ? "Done reordering" : "Reorder rooms and scenes"
+              foreground: root.editMode ? Color.accent : root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onClicked: root.editMode = !root.editMode
+            }
           }
 
           Rectangle {
@@ -585,14 +621,16 @@ Panel {
             spacing: Style.space(6)
 
             Repeater {
-              model: root.orderedRooms
+              model: root.displayedRooms
 
               Rectangle {
                 id: roomRow
                 required property var modelData
                 required property int index
+                readonly property bool isHidden: root.hiddenRoomIds.indexOf(modelData.id) !== -1
                 width: parent.width
                 height: Math.max(48, roomRowContent.implicitHeight + Style.space(16))
+                opacity: isHidden ? 0.4 : 1.0
                 radius: Style.space(8)
                 color: roomRowMouse.containsMouse
                   ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
@@ -637,22 +675,6 @@ Panel {
                     elide: Text.ElideRight
                     anchors.verticalCenter: parent.verticalCenter
                   }
-
-                  Text {
-                    text: roomRow.modelData.lightIds.length + (roomRow.modelData.lightIds.length === 1 ? " light" : " lights")
-                    color: Qt.darker(root.bar.foreground, 1.4)
-                    font.family: root.bar.fontFamily
-                    font.pixelSize: Style.font.caption
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-
-                  Text {
-                    text: roomRow.modelData.on ? "On" : "Off"
-                    color: roomRow.modelData.on ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
-                    font.family: root.bar.fontFamily
-                    font.pixelSize: Style.font.caption
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
                 }
 
                 Row {
@@ -671,6 +693,7 @@ Panel {
                   }
 
                   PanelActionButton {
+                    visible: root.editMode
                     iconText: "▲"
                     foreground: root.bar.foreground
                     fontFamily: root.bar.fontFamily
@@ -679,11 +702,21 @@ Panel {
                   }
 
                   PanelActionButton {
+                    visible: root.editMode
                     iconText: "▼"
                     foreground: root.bar.foreground
                     fontFamily: root.bar.fontFamily
-                    enabled: roomRow.index < root.orderedRooms.length - 1
+                    enabled: roomRow.index < root.displayedRooms.length - 1
                     onClicked: root.moveRoom(roomRow.modelData.id, 1)
+                  }
+
+                  PanelActionButton {
+                    visible: root.editMode
+                    iconText: roomRow.isHidden ? "" : ""
+                    tooltipText: roomRow.isHidden ? "Unhide room" : "Hide room"
+                    foreground: root.bar.foreground
+                    fontFamily: root.bar.fontFamily
+                    onClicked: root.toggleRoomHidden(roomRow.modelData.id)
                   }
 
                   Text {
@@ -708,6 +741,15 @@ Panel {
             Text {
               visible: root.config !== null && !root.loading && !root.lastFetchFailed && root.roomCount === 0
               text: "No rooms with lights found."
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              visible: root.config !== null && !root.loading && !root.lastFetchFailed
+                && root.roomCount > 0 && root.displayedRooms.length === 0
+              text: "All rooms are hidden. Tap ⚙ to manage."
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.caption
@@ -869,6 +911,7 @@ Panel {
               spacing: Style.space(2)
 
               PanelActionButton {
+                visible: root.editMode
                 iconText: "▲"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
@@ -877,6 +920,7 @@ Panel {
               }
 
               PanelActionButton {
+                visible: root.editMode
                 iconText: "▼"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily

@@ -205,6 +205,8 @@ def _write_order(body_json):
         return
     if "sceneOrder" in body and not _valid_id_map_of_id_lists(body["sceneOrder"]):
         return
+    if "hiddenRooms" in body and not _valid_id_list(body["hiddenRooms"]):
+        return
     if "lastScene" in body and not _valid_id_map_of_ids(body["lastScene"]):
         return
 
@@ -224,7 +226,7 @@ def _write_order(body_json):
     except (OSError, ValueError):
         pass
 
-    for key in ("roomOrder", "sceneOrder", "lastScene"):
+    for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
         if key in body:
             cfg[key] = body[key]
 

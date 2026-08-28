@@ -160,6 +160,29 @@ class WriteOrderTests(unittest.TestCase):
         hue_api._write_order(json.dumps({"lastScene": {"2": "has space"}}))
         self.assertFalse(os.path.exists(self.order_path()))
 
+    def test_writes_hidden_rooms(self):
+        hue_api._write_order(json.dumps({"hiddenRooms": ["3"]}))
+        with open(self.order_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"hiddenRooms": ["3"]})
+
+    def test_merges_hidden_rooms_without_clobbering_room_order(self):
+        os.makedirs(os.path.dirname(self.order_path()))
+        with open(self.order_path(), "w") as f:
+            json.dump({"roomOrder": ["2", "1"]}, f)
+        hue_api._write_order(json.dumps({"hiddenRooms": ["1"]}))
+        with open(self.order_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"roomOrder": ["2", "1"], "hiddenRooms": ["1"]})
+
+    def test_rejects_non_list_hidden_rooms_silently(self):
+        hue_api._write_order(json.dumps({"hiddenRooms": "not-a-list"}))
+        self.assertFalse(os.path.exists(self.order_path()))
+
+    def test_rejects_invalid_room_id_in_hidden_rooms_silently(self):
+        hue_api._write_order(json.dumps({"hiddenRooms": ["has space"]}))
+        self.assertFalse(os.path.exists(self.order_path()))
+
 
 class DispatchValidationTests(unittest.TestCase):
     def test_get_scenes_requests_scenes_path(self):
