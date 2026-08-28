@@ -28,7 +28,7 @@ over the bridge's local HTTP API (v1).
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/jameslunardi/omarchy-hue-room-remote.git --enable
+omarchy plugin add https://github.com/lunardi0x01/omarchy-hue-room-remote.git --enable
 ```
 
 ## Pairing with the bridge
