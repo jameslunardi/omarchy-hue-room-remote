@@ -117,6 +117,30 @@ test("parseScenes returns an empty list for empty/malformed input", () => {
   assert.deepEqual(HueApi.parseScenes("not json"), [])
 })
 
+test("applyOrder sorts items by position in the order list", () => {
+  const items = [{ id: "1" }, { id: "2" }, { id: "3" }]
+  const sorted = HueApi.applyOrder(items, ["3", "1", "2"])
+  assert.deepEqual(sorted.map(i => i.id), ["3", "1", "2"])
+})
+
+test("applyOrder appends unlisted ids at the end in their original order", () => {
+  const items = [{ id: "1" }, { id: "2" }, { id: "3" }]
+  const sorted = HueApi.applyOrder(items, ["2"])
+  assert.deepEqual(sorted.map(i => i.id), ["2", "1", "3"])
+})
+
+test("applyOrder ignores stale ids not present in items", () => {
+  const items = [{ id: "1" }, { id: "2" }]
+  const sorted = HueApi.applyOrder(items, ["deleted-id", "2", "1"])
+  assert.deepEqual(sorted.map(i => i.id), ["2", "1"])
+})
+
+test("applyOrder returns items unchanged when order is empty or missing", () => {
+  const items = [{ id: "1" }, { id: "2" }]
+  assert.deepEqual(HueApi.applyOrder(items, []).map(i => i.id), ["1", "2"])
+  assert.deepEqual(HueApi.applyOrder(items, undefined).map(i => i.id), ["1", "2"])
+})
+
 test("roomBrightness averages the actual state.bri of a room's lights", () => {
   const text = JSON.stringify({
     "1": { state: { bri: 100 } },

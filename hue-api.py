@@ -111,6 +111,9 @@ def _dispatch(op):
     if op == "write-favorite" and len(sys.argv) >= 4:
         _write_favorite(sys.argv[3])
         return
+    if op == "write-order" and len(sys.argv) >= 4:
+        _write_order(sys.argv[3])
+        return
 
     creds = _load_creds()
 
@@ -148,6 +151,71 @@ def _write_favorite(body_json):
         os.path.expanduser("~"), ".config/omarchy/settings/hue-favorite.json")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     payload = json.dumps({"favoriteRoomId": room_id}) + "\n"
+    try:
+        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            fd = os.open(config_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+            os.fchmod(fd, 0o600)
+        except (OSError, ValueError):
+            try:
+                os.remove(config_path)
+            except OSError:
+                pass
+            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(payload)
+
+
+_ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
+
+
+def _valid_id_list(value):
+    return isinstance(value, list) and all(
+        _ID_RE.fullmatch(str(v)) for v in value)
+
+
+def _valid_id_map_of_id_lists(value):
+    if not isinstance(value, dict):
+        return False
+    for k, v in value.items():
+        if not _ID_RE.fullmatch(str(k)):
+            return False
+        if not _valid_id_list(v):
+            return False
+    return True
+
+
+def _write_order(body_json):
+    body = json.loads(body_json)
+    if not isinstance(body, dict):
+        return
+    if "roomOrder" in body and not _valid_id_list(body["roomOrder"]):
+        return
+    if "sceneOrder" in body and not _valid_id_map_of_id_lists(body["sceneOrder"]):
+        return
+
+    config_path = os.path.join(
+        os.path.expanduser("~"), ".config/omarchy/settings/hue-order.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    cfg = {}
+    try:
+        fd = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            with os.fdopen(fd) as f:
+                cfg = json.load(f)
+            if not isinstance(cfg, dict):
+                cfg = {}
+        except Exception:
+            cfg = {}
+    except (OSError, ValueError):
+        pass
+
+    for key in ("roomOrder", "sceneOrder"):
+        if key in body:
+            cfg[key] = body[key]
+
+    payload = json.dumps(cfg, indent=2) + "\n"
     try:
         fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:

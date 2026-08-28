@@ -127,6 +127,23 @@ function roomIcon(className) {
   return ROOM_CLASS_ICONS[String(className || "")] || ROOM_ICON_DEFAULT
 }
 
+// Sorts `items` (each with an `id`) by position in `orderIds`, appending
+// anything not listed at the end in its original order. `orderIds` is
+// filtered down to ids actually present in `items` first, so stale ids
+// (a room/scene since deleted on the bridge) don't inject phantom entries.
+function applyOrder(items, orderIds) {
+  var known = {}
+  for (var i = 0; i < items.length; i++) known[items[i].id] = true
+  var order = Array.isArray(orderIds) ? orderIds.filter(function(id) { return known[id] }) : []
+  var rank = {}
+  for (var j = 0; j < order.length; j++) rank[order[j]] = j
+  var ranked = items.map(function(item, idx) {
+    return { item: item, rank: Object.prototype.hasOwnProperty.call(rank, item.id) ? rank[item.id] : order.length + idx }
+  })
+  ranked.sort(function(a, b) { return a.rank - b.rank })
+  return ranked.map(function(r) { return r.item })
+}
+
 function roomBrightness(text, lightIds) {
   var obj = parseJsonObject(text)
   if (!obj || !lightIds || lightIds.length === 0) return null
@@ -153,6 +170,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseGroups: parseGroups,
     parseScenes: parseScenes,
     roomIcon: roomIcon,
+    applyOrder: applyOrder,
     roomBrightness: roomBrightness
   }
 }

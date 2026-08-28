@@ -25,11 +25,17 @@ Panel {
   property bool lastFetchFailed: false
   property var actionQueue: []
   property var lastSceneByRoom: ({})
+  property var roomOrder: []
+  property var sceneOrderByRoom: ({})
 
   readonly property var activeRoom: root.findRoom(root.activeRoomId)
   readonly property int roomCount: root.visibleRooms.length
   readonly property int lightTotal: root.visibleRooms.reduce(function(sum, r) { return sum + r.lightIds.length }, 0)
   readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
+  readonly property var orderedRooms: HueApi.applyOrder(root.visibleRooms, root.roomOrder)
+  readonly property var orderedScenesForActiveRoom: HueApi.applyOrder(
+    root.scenes.filter(function(s) { return s.group === root.activeRoomId }),
+    root.sceneOrderByRoom[root.activeRoomId] || [])
 
   readonly property string statusText: {
     if (root.config === null) return "Not paired"
@@ -193,6 +199,33 @@ Panel {
     root.queueAction("write-favorite", "favorite", { roomId: next })
   }
 
+  function moveRoom(roomId, direction) {
+    var ids = root.orderedRooms.map(function(r) { return r.id })
+    var idx = ids.indexOf(roomId)
+    var next = idx + direction
+    if (idx < 0 || next < 0 || next >= ids.length) return
+    var tmp = ids[idx]
+    ids[idx] = ids[next]
+    ids[next] = tmp
+    root.roomOrder = ids
+    root.queueAction("write-order", "order", { roomOrder: ids })
+  }
+
+  function moveScene(roomId, sceneId, direction) {
+    var ids = root.orderedScenesForActiveRoom.map(function(s) { return s.id })
+    var idx = ids.indexOf(sceneId)
+    var next = idx + direction
+    if (idx < 0 || next < 0 || next >= ids.length) return
+    var tmp = ids[idx]
+    ids[idx] = ids[next]
+    ids[next] = tmp
+    var updated = {}
+    for (var k in root.sceneOrderByRoom) updated[k] = root.sceneOrderByRoom[k]
+    updated[roomId] = ids
+    root.sceneOrderByRoom = updated
+    root.queueAction("write-order", "order", { sceneOrder: root.sceneOrderByRoom })
+  }
+
   function queueAction(op, targetId, body) {
     for (var i = 0; i < root.actionQueue.length; i++) {
       var pending = root.actionQueue[i]
@@ -246,6 +279,27 @@ Panel {
       }
     }
     onLoadFailed: root.favoriteRoomId = ""
+  }
+
+  property FileView orderFile: FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-order.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        var parsed = JSON.parse(text())
+        root.roomOrder = Array.isArray(parsed.roomOrder) ? parsed.roomOrder.map(String) : []
+        root.sceneOrderByRoom = (parsed.sceneOrder && typeof parsed.sceneOrder === "object") ? parsed.sceneOrder : {}
+      } catch (e) {
+        root.roomOrder = []
+        root.sceneOrderByRoom = {}
+      }
+    }
+    onLoadFailed: {
+      root.roomOrder = []
+      root.sceneOrderByRoom = {}
+    }
   }
 
   Timer {
@@ -527,11 +581,12 @@ Panel {
             spacing: Style.space(6)
 
             Repeater {
-              model: root.visibleRooms
+              model: root.orderedRooms
 
               Rectangle {
                 id: roomRow
                 required property var modelData
+                required property int index
                 width: parent.width
                 height: Math.max(48, roomRowContent.implicitHeight + Style.space(16))
                 radius: Style.space(8)
@@ -544,7 +599,7 @@ Panel {
                 MouseArea {
                   id: roomRowMouse
                   anchors.left: parent.left
-                  anchors.right: starIcon.left
+                  anchors.right: trailingControls.left
                   anchors.top: parent.top
                   anchors.bottom: parent.bottom
                   hoverEnabled: true
@@ -556,7 +611,7 @@ Panel {
                   id: roomRowContent
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(12)
-                  anchors.right: starIcon.left
+                  anchors.right: trailingControls.left
                   anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.space(8)
@@ -596,21 +651,43 @@ Panel {
                   }
                 }
 
-                Text {
-                  id: starIcon
+                Row {
+                  id: trailingControls
                   anchors.right: parent.right
-                  anchors.rightMargin: Style.space(12)
+                  anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  text: roomRow.modelData.id === root.favoriteRoomId ? "★" : "☆"
-                  color: roomRow.modelData.id === root.favoriteRoomId ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
-                  font.pixelSize: Style.font.title
+                  spacing: Style.space(2)
 
-                  MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -Style.space(6)
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.setFavorite(roomRow.modelData.id)
+                  PanelActionButton {
+                    iconText: "▲"
+                    foreground: root.bar.foreground
+                    fontFamily: root.bar.fontFamily
+                    enabled: roomRow.index > 0
+                    onClicked: root.moveRoom(roomRow.modelData.id, -1)
+                  }
+
+                  PanelActionButton {
+                    iconText: "▼"
+                    foreground: root.bar.foreground
+                    fontFamily: root.bar.fontFamily
+                    enabled: roomRow.index < root.orderedRooms.length - 1
+                    onClicked: root.moveRoom(roomRow.modelData.id, 1)
+                  }
+
+                  Text {
+                    id: starIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: roomRow.modelData.id === root.favoriteRoomId ? "★" : "☆"
+                    color: roomRow.modelData.id === root.favoriteRoomId ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
+                    font.pixelSize: Style.font.title
+
+                    MouseArea {
+                      anchors.fill: parent
+                      anchors.margins: -Style.space(6)
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: root.setFavorite(roomRow.modelData.id)
+                    }
                   }
                 }
               }
@@ -735,12 +812,12 @@ Panel {
         }
 
         Repeater {
-          model: root.scenes
+          model: root.orderedScenesForActiveRoom
 
           Rectangle {
             id: sceneRow
             required property var modelData
-            visible: modelData.group === root.activeRoomId
+            required property int index
             width: parent.width
             height: sceneText.implicitHeight + Style.space(16)
             radius: Style.space(8)
@@ -763,10 +840,37 @@ Panel {
 
             MouseArea {
               id: sceneMouse
-              anchors.fill: parent
+              anchors.left: parent.left
+              anchors.right: sceneTrailingControls.left
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: root.applyScene(root.activeRoomId, sceneRow.modelData.id)
+            }
+
+            Row {
+              id: sceneTrailingControls
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(2)
+
+              PanelActionButton {
+                iconText: "▲"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                enabled: sceneRow.index > 0
+                onClicked: root.moveScene(root.activeRoomId, sceneRow.modelData.id, -1)
+              }
+
+              PanelActionButton {
+                iconText: "▼"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                enabled: sceneRow.index < root.orderedScenesForActiveRoom.length - 1
+                onClicked: root.moveScene(root.activeRoomId, sceneRow.modelData.id, 1)
+              }
             }
           }
         }
