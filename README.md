@@ -10,12 +10,19 @@ over the bridge's local HTTP API (v1).
 ## Features
 
 - Bar icon (lightbulb) that opens a control panel
-- **Room List** — shows every room with lights, along with its on/off state
-  and light count. Star a room to favorite it; if a favorite is set, the
-  panel opens straight to that room instead of the list.
+- **Room List** — shows every room with lights, each with an icon derived
+  from its Hue-assigned room type (bedroom, office, kitchen, etc., falling
+  back to a bulb icon where there's no good match) and a switch for on/off.
+  Star a room to favorite it; if a favorite is set, the panel opens
+  straight to that room instead of the list.
 - **Room View** — tap a room to open it: toggle the whole room on/off
   (re-applying whatever scene was last used, rather than switching all
-  lights "on"), and tap a saved scene to apply it instantly.
+  lights "on" — this is remembered across restarts, not just for the
+  current session), and tap a saved scene to apply it instantly.
+- **Reorder and hide rooms** — tap the ⚙ in the header to reveal up/down
+  arrows (for both the Room List and each room's scene list) and an eye
+  icon to hide a room from the list entirely. Hidden rooms reappear
+  (dimmed) while the ⚙ is active, so there's always a way to unhide one.
 - Brightness changes apply to the whole room, not individual lights.
 - Reads credentials from `~/.local/state/omarchy/settings/hue.json`
 - Retries / re-fetches state automatically after every change
