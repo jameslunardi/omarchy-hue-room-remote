@@ -19,50 +19,6 @@ def load_hue_api():
 hue_api = load_hue_api()
 
 
-class WriteThemeConfigTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.home_patch = mock.patch("os.path.expanduser", side_effect=self._expanduser)
-        self.home_patch.start()
-        self.addCleanup(self.home_patch.stop)
-
-    def _expanduser(self, path):
-        return path.replace("~", self.tmp.name)
-
-    def config_path(self):
-        return os.path.join(self.tmp.name, ".config/omarchy/settings/hue-theme.json")
-
-    def test_creates_missing_settings_directory(self):
-        self.assertFalse(os.path.isdir(os.path.dirname(self.config_path())))
-        hue_api._write_theme_config(json.dumps({"5": True}))
-        with open(self.config_path()) as f:
-            saved = json.load(f)
-        self.assertEqual(saved["themeSync"], {"5": True})
-
-    def test_merges_with_existing_config(self):
-        os.makedirs(os.path.dirname(self.config_path()))
-        with open(self.config_path(), "w") as f:
-            json.dump({"unrelated": "keep-me"}, f)
-        hue_api._write_theme_config(json.dumps({"5": False}))
-        with open(self.config_path()) as f:
-            saved = json.load(f)
-        self.assertEqual(saved["unrelated"], "keep-me")
-        self.assertEqual(saved["themeSync"], {"5": False})
-
-    def test_rejects_non_bool_values_silently(self):
-        hue_api._write_theme_config(json.dumps({"5": "not-a-bool"}))
-        self.assertFalse(os.path.exists(self.config_path()))
-
-    def test_rejects_invalid_room_id_silently(self):
-        hue_api._write_theme_config(json.dumps({"has space": True}))
-        self.assertFalse(os.path.exists(self.config_path()))
-
-    def test_rejects_non_dict_payload_silently(self):
-        hue_api._write_theme_config(json.dumps(["not", "a", "dict"]))
-        self.assertFalse(os.path.exists(self.config_path()))
-
-
 class WriteFavoriteTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

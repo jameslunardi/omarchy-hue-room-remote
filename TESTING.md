@@ -27,7 +27,7 @@ pytest/jest/mocha for a plugin this size.
   (`Qt.resolvedUrl`) so it loads fine under plain Node, and exports its
   functions via `module.exports` only when `module` exists (a no-op under
   QML's JS engine).
-- **`hue-api.py`** (`tests/test_hue_api.py`): `_write_theme_config`
+- **`hue-api.py`** (`tests/test_hue_api.py`): `_write_favorite`
   (including the settings-directory bug fixed 2026-08-27) and the
   argument-validation regexes in `_dispatch`. Loaded via
   `importlib.util.spec_from_file_location` since the filename has a
