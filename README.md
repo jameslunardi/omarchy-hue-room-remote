@@ -1,19 +1,24 @@
-# omarchy-philips-hue
+# omarchy-hue-room-remote
 
-Omarchy / Quickshell bar widget for controlling Philips Hue lights over the bridge's local HTTP API (v1).
+Omarchy / Quickshell bar widget for controlling Philips Hue lights by room,
+over the bridge's local HTTP API (v1).
 
 <p align="center">
-  <img src="preview.png" alt="omarchy-philips-hue panel screenshot" width="360">
+  <img src="preview.png" alt="omarchy-hue-room-remote panel screenshot" width="360">
 </p>
 
 ## Features
 
 - Bar icon (lightbulb) that opens a control panel
-- Toggle all rooms, individual rooms, or single lights
-- Per-light brightness slider
-- Per-light color temperature slider (warm ⇄ cool white)
-- Per-light color wheel picker (hue + saturation) and color temperature slider;
-  both hidden for lights in rooms with theme sync enabled
+- **Room List** — every room with lights, showing on/off state and light
+  count. Star a room to favorite it; the panel opens straight to your
+  favorite room instead of the list.
+- **Room View** — tap a room to open it: toggle the whole room on/off
+  (re-applying whatever scene was last used, rather than a flat "on"),
+  drag a brightness slider, and tap a saved scene to apply it instantly.
+- Brightness is read from each light's real state on demand, not the
+  bridge's last-sent command, so the slider reflects what's actually
+  happening even after a scene changes individual lights differently.
 - Reads credentials from `~/.local/state/omarchy/settings/hue.json`
 - Retries / re-fetches state automatically after every change
 
@@ -25,7 +30,7 @@ Omarchy / Quickshell bar widget for controlling Philips Hue lights over the brid
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/sethchev/omarchy-philips-hue.git --enable
+omarchy plugin add https://github.com/jameslunardi/omarchy-hue-room-remote.git --enable
 ```
 
 ## Pairing with the bridge
@@ -39,7 +44,7 @@ picks up the new credentials automatically within seconds.
 You can also pair manually:
 
 ```sh
-~/.config/omarchy/plugins/omarchy-philips-hue/pair.sh
+~/.config/omarchy/plugins/omarchy-hue-room-remote/pair.sh
 ```
 
 Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
@@ -48,29 +53,15 @@ Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
 
 A theme-set hook (`45-hue.sh`, vendored in `theme-sync/`) recolors every
 room/zone to the active theme's `accent` whenever you run `omarchy theme set`.
-The bar widget picks the change up within its 15 s poll.
-
-### Per-room opt-out
-
-Each room that is switched on gets a **Theme Sync** toggle in the panel,
-right below its own toggle. Every room starts out synced; toggling a room
-off excludes it from theme changes until you re-enable it.
-
-While a room is synced, its lights' color wheel and color temperature
-slider are hidden in the panel — the hook owns their color, so manual
-picking would be overwritten anyway. Rooms with sync off keep full manual
-control.
-
-The toggle states live under the `themeSync` key of `hue-theme.json`
-(missing room = enabled), and are picked up by the hook immediately — no
-restart needed.
+This runs independently of the bar panel — there's no toggle for it in the
+UI; it's configured entirely through `hue-theme.json`.
 
 ### Install
 
 The repo ships everything needed under `theme-sync/`:
 
 ```sh
-~/.config/omarchy/plugins/omarchy-philips-hue/theme-sync/install.sh
+~/.config/omarchy/plugins/omarchy-hue-room-remote/theme-sync/install.sh
 ```
 
 This copies `45-hue.sh` to `~/.config/omarchy/hooks/theme-set.d/` (make it
@@ -107,7 +98,9 @@ Behavior is configured in `~/.config/omarchy/settings/hue-theme.json`:
 - `bri` — optional forced brightness (1–254); leave `null` to keep each light's current brightness
 - `turnOn` — `true` to turn lights on when syncing; `false` leaves on/off state untouched
 - `themes` — per-theme hex overrides, e.g. `{ "spacehaven": "#0c8184" }`; themes without an override use their own `accent`
-- `themeSync` — per-room opt-out map written by the panel's Theme Sync toggles, e.g. `{ "kitchen": false }`; rooms missing from the map are synced
+- `themeSync` — per-room opt-out map, e.g. `{ "kitchen": false }` to exclude
+  that room from theme changes; rooms missing from the map are synced.
+  Edit this key directly — there's no panel control for it.
 
 Test the hook without changing your theme:
 
@@ -118,8 +111,8 @@ bash ~/.config/omarchy/hooks/theme-set.d/45-hue.sh <theme-slug>
 ## Remove
 
 ```sh
-~/.config/omarchy/plugins/omarchy-philips-hue/cleanup.sh
-omarchy plugin remove omarchy-philips-hue
+~/.config/omarchy/plugins/omarchy-hue-room-remote/cleanup.sh
+omarchy plugin remove omarchy-hue-room-remote
 ```
 
 The cleanup script removes your bridge credentials from
@@ -146,3 +139,11 @@ plugin so no auth token is left behind.
   removed long-term, but no end-of-life date has been announced.
 - Credentials are stored per-user in `~/.local/state/omarchy/settings/hue.json`;
   keep that file out of version control.
+
+## Credit
+
+This started as a fork of [sethchev/omarchy-philips-hue](https://github.com/sethchev/omarchy-philips-hue),
+which laid down the original bridge-pairing, TLS, and theme-sync groundwork.
+It's since been substantially rewritten — new room-based UI, bug fixes, an
+added test suite — and renamed to reflect that. Both projects are MIT
+licensed; see [LICENSE](LICENSE).

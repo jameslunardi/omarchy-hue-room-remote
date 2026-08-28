@@ -3,7 +3,7 @@
   "id": "omarchy-hue-room-remote",
   "name": "Omarchy Hue Room Remote",
   "version": "1.1.0",
-  "author": "sethchev",
+  "author": "James Lunardi (fork of sethchev/omarchy-philips-hue)",
   "license": "MIT",
   "description": "Control Philips Hue lights by room from the bar: toggle, adjust brightness, and apply scenes.",
   "kinds": [
