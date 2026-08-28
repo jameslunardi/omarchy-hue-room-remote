@@ -48,7 +48,7 @@ For the Python/JS/bash layers: write the failing test first in the
 relevant `tests/` file, confirm it fails for the right reason, then fix
 `hue-api.py`/`HueApi.js`/`pair.sh` until it passes. Both the dev copy
 (`~/Projects/Hue`) and the live install
-(`~/.config/omarchy/plugins/omarchy-philips-hue`) should stay
+(`~/.config/omarchy/plugins/omarchy-hue-room-remote`) should stay
 byte-identical (`diff` after copying) so the currently-running plugin
 matches what's under test.
 

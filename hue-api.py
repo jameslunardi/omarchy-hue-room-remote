@@ -14,7 +14,7 @@ CREDS_FILE = os.path.join(
     os.path.expanduser("~"), ".local/state/omarchy/settings/hue.json")
 CACERT = os.path.join(
     os.path.expanduser("~"),
-    ".config/omarchy/plugins/omarchy-philips-hue/hue_bridge_cacert.pem")
+    ".config/omarchy/plugins/omarchy-hue-room-remote/hue_bridge_cacert.pem")
 
 _opener = None
 

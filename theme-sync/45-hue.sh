@@ -80,7 +80,7 @@ creds_file = os.path.expanduser("~/.local/state/omarchy/settings/hue.json")
 
 cacert_file = ""
 _plugin_dir = os.path.join(os.path.expanduser("~"),
-                           ".config/omarchy/plugins/omarchy-philips-hue")
+                           ".config/omarchy/plugins/omarchy-hue-room-remote")
 _candidate = os.path.join(_plugin_dir, "hue_bridge_cacert.pem")
 if os.path.isfile(_candidate):
     cacert_file = os.path.abspath(_candidate)
