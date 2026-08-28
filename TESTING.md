@@ -50,7 +50,7 @@ relevant `tests/` file, confirm it fails for the right reason, then fix
 
 `~/Projects/Hue` (dev) and `~/.config/omarchy/plugins/lunardi0x01.hue-room-remote`
 (live) are both git clones of
-[lunardi0x01/omarchy-hue-room-remote](https://github.com/lunardi0x01/omarchy-hue-room-remote) —
+[lunardi0x01/hue-room-remote](https://github.com/lunardi0x01/hue-room-remote) —
 the live copy is exactly what `omarchy plugin add` would have produced.
 Edit and commit in the dev copy, push, then run
 `omarchy plugin update lunardi0x01.hue-room-remote` to fast-forward the

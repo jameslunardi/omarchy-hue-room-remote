@@ -1,10 +1,10 @@
-# omarchy-hue-room-remote
+# hue-room-remote
 
 Omarchy / Quickshell bar widget for controlling Philips Hue lights by room,
 over the bridge's local HTTP API (v1).
 
 <p align="center">
-  <img src="preview.png" alt="omarchy-hue-room-remote panel screenshot" width="360">
+  <img src="preview.png" alt="hue-room-remote panel screenshot" width="360">
 </p>
 
 ## Features
@@ -28,7 +28,7 @@ over the bridge's local HTTP API (v1).
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/lunardi0x01/omarchy-hue-room-remote.git --enable
+omarchy plugin add https://github.com/lunardi0x01/hue-room-remote.git --enable
 ```
 
 ## Pairing with the bridge
