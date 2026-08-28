@@ -7,8 +7,8 @@ import "HueApi.js" as HueApi
 
 Panel {
   id: root
-  moduleName: "omarchy-hue-room-remote"
-  ipcTarget: "omarchy-hue-room-remote"
+  moduleName: "lunardi0x01.hue-room-remote"
+  ipcTarget: "lunardi0x01.hue-room-remote"
 
   property var anchorItem: null
   property var hostWidget: null

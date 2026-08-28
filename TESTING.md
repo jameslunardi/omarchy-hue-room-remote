@@ -48,12 +48,12 @@ For the Python/JS/bash layers: write the failing test first in the
 relevant `tests/` file, confirm it fails for the right reason, then fix
 `hue-api.py`/`HueApi.js`/`pair.sh` until it passes.
 
-`~/Projects/Hue` (dev) and `~/.config/omarchy/plugins/omarchy-hue-room-remote`
+`~/Projects/Hue` (dev) and `~/.config/omarchy/plugins/lunardi0x01.hue-room-remote`
 (live) are both git clones of
 [jameslunardi/omarchy-hue-room-remote](https://github.com/jameslunardi/omarchy-hue-room-remote) —
 the live copy is exactly what `omarchy plugin add` would have produced.
 Edit and commit in the dev copy, push, then run
-`omarchy plugin update omarchy-hue-room-remote` to fast-forward the
+`omarchy plugin update lunardi0x01.hue-room-remote` to fast-forward the
 live copy (this is a real `git fetch` + `git merge --ff-only`, so it
 only works once a commit is actually pushed — there's no shortcut for
 testing uncommitted changes other than copying the file over by hand
@@ -126,7 +126,7 @@ grep -E --line-buffered "FAIL|finishFetch\(false\)"
 `hue-api.py`/`HueApi.js`/`pair.sh` take effect immediately (invoked
 fresh per call). `Panel.qml` and other QML are loaded once at shell
 startup — after editing, commit + push from the dev copy and run
-`omarchy plugin update omarchy-hue-room-remote` to bring the live copy
+`omarchy plugin update lunardi0x01.hue-room-remote` to bring the live copy
 up to date (or, for a quick local-only check before committing, copy
 the file directly into the live install path), then:
 

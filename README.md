@@ -42,7 +42,7 @@ picks up the new credentials automatically within seconds.
 You can also pair manually:
 
 ```sh
-~/.config/omarchy/plugins/omarchy-hue-room-remote/pair.sh
+~/.config/omarchy/plugins/lunardi0x01.hue-room-remote/pair.sh
 ```
 
 Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
@@ -50,8 +50,8 @@ Pass an IP directly to skip auto-discovery: `pair.sh 192.168.1.14`.
 ## Remove
 
 ```sh
-~/.config/omarchy/plugins/omarchy-hue-room-remote/cleanup.sh
-omarchy plugin remove omarchy-hue-room-remote
+~/.config/omarchy/plugins/lunardi0x01.hue-room-remote/cleanup.sh
+omarchy plugin remove lunardi0x01.hue-room-remote
 ```
 
 The cleanup script removes your bridge credentials from

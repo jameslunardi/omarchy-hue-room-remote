@@ -3,7 +3,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "omarchy-hue-room-remote"
+  moduleName: "lunardi0x01.hue-room-remote"
 
   function injectPanel() {
     var target = panelLoader.item
