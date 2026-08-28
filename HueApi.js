@@ -60,6 +60,7 @@ function parseGroups(text) {
       id: String(id),
       name: String(group.name || "Group " + id),
       type: type,
+      class: String(group.class || "Other"),
       on: !!(group.state && group.state.any_on),
       allOn: !!(group.state && group.state.all_on),
       bri: Math.max(1, Math.min(254, bri)),
@@ -89,6 +90,43 @@ function parseScenes(text) {
   return scenes
 }
 
+// Nerd Font glyphs verified against the installed font (a reduced "basic"
+// build, not the full Material Design Icons set) by rendering each
+// candidate codepoint and checking it visually -- most guessed codepoints
+// turned out to be missing or wrong glyphs, so this only maps classes with
+// a confirmed match. Everything else falls back to the plugin's own bulb
+// icon, which every room already shows regardless.
+var ROOM_CLASS_ICONS = {
+  "Bedroom": "",
+  "Kids bedroom": "",
+  "Guest room": "",
+  "Bathroom": "",
+  "Toilet": "",
+  "Office": "",
+  "Computer": "",
+  "Garden": "",
+  "Balcony": "",
+  "Terrace": "",
+  "Porch": "",
+  "Driveway": "",
+  "Carport": "",
+  "Garage": "",
+  "TV": "",
+  "Reading": "",
+  "Storage": "",
+  "Closet": "",
+  "Home": "",
+  "Barbecue": "",
+  "Music": "",
+  "Gym": "",
+  "Nursery": ""
+}
+var ROOM_ICON_DEFAULT = "󰌵"
+
+function roomIcon(className) {
+  return ROOM_CLASS_ICONS[String(className || "")] || ROOM_ICON_DEFAULT
+}
+
 function roomBrightness(text, lightIds) {
   var obj = parseJsonObject(text)
   if (!obj || !lightIds || lightIds.length === 0) return null
@@ -114,6 +152,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseJsonObject: parseJsonObject,
     parseGroups: parseGroups,
     parseScenes: parseScenes,
+    roomIcon: roomIcon,
     roomBrightness: roomBrightness
   }
 }

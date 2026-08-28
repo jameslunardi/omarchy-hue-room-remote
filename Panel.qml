@@ -562,6 +562,14 @@ Panel {
                   spacing: Style.space(8)
 
                   Text {
+                    text: HueApi.roomIcon(roomRow.modelData.class)
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.body
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Text {
                     text: roomRow.modelData.name
                     color: root.bar.foreground
                     font.family: root.bar.fontFamily
@@ -692,7 +700,7 @@ Panel {
 
       Toggle {
         width: parent.width
-        label: root.activeRoom.name
+        label: HueApi.roomIcon(root.activeRoom.class) + "  " + root.activeRoom.name
         checked: root.activeRoom.on
         foreground: root.bar.foreground
         accent: Color.accent

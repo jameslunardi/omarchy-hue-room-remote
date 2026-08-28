@@ -75,6 +75,31 @@ test("parseGroups reports on/off from state.any_on, not action.on", () => {
   assert.equal(groups[0].allOn, false)
 })
 
+test("parseGroups passes through the bridge's class field, defaulting to Other", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Office", type: "Room", lights: ["1"], class: "Office" },
+    "2": { name: "Mystery", type: "Room", lights: ["1"] }
+  }))
+  const byName = Object.fromEntries(groups.map(g => [g.name, g]))
+  assert.equal(byName.Office.class, "Office")
+  assert.equal(byName.Mystery.class, "Other")
+})
+
+test("roomIcon returns a mapped glyph for a known class", () => {
+  const bedroomIcon = HueApi.roomIcon("Bedroom")
+  const defaultIcon = HueApi.roomIcon("Other")
+  assert.notEqual(bedroomIcon, defaultIcon)
+  assert.equal(typeof bedroomIcon, "string")
+  assert.ok(bedroomIcon.length > 0)
+})
+
+test("roomIcon falls back to the default glyph for unknown or missing classes", () => {
+  const defaultIcon = HueApi.roomIcon("Other")
+  assert.equal(HueApi.roomIcon("Something Hue never sends"), defaultIcon)
+  assert.equal(HueApi.roomIcon(undefined), defaultIcon)
+  assert.equal(HueApi.roomIcon(""), defaultIcon)
+})
+
 test("parseScenes keeps only scenes tied to a group and sorts by name", () => {
   const scenes = HueApi.parseScenes(JSON.stringify({
     "s2": { name: "Zen", type: "GroupScene", group: "1" },
