@@ -2,14 +2,12 @@
 """Hue bridge API helper — reads credentials from file, never exposes
 the username in process arguments."""
 
-import datetime
 import json
 import os
 import re
 import socket
 import ssl
 import sys
-import time
 import urllib.request
 
 CREDS_FILE = os.path.join(
@@ -17,16 +15,6 @@ CREDS_FILE = os.path.join(
 CACERT = os.path.join(
     os.path.expanduser("~"),
     ".config/omarchy/plugins/omarchy-philips-hue/hue_bridge_cacert.pem")
-DEBUG_LOG = os.path.join(os.path.expanduser("~"), ".cache", "omarchy-hue-debug.log")
-
-
-def _log(msg):
-    try:
-        ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        with open(DEBUG_LOG, "a") as f:
-            f.write("%s %s\n" % (ts, msg))
-    except Exception:
-        pass
 
 _opener = None
 
@@ -116,16 +104,7 @@ def _put(creds, path, body):
 def main():
     if len(sys.argv) < 2:
         return
-    op = sys.argv[1]
-    target = sys.argv[2] if len(sys.argv) >= 3 else ""
-    t0 = time.time()
-    _log("start %s %s" % (op, target))
-    try:
-        _dispatch(op)
-        _log("ok    %s %s (%.2fs)" % (op, target, time.time() - t0))
-    except Exception as e:
-        _log("FAIL  %s %s (%.2fs): %s: %s" % (op, target, time.time() - t0, type(e).__name__, e))
-        raise
+    _dispatch(sys.argv[1])
 
 
 def _dispatch(op):

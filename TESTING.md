@@ -60,21 +60,40 @@ symptom before committing it.
 
 The plugin runs inside the shared Omarchy Quickshell bar process, not as
 its own inspectable process, so verifying a QML-side fix means watching
-two log sources while reproducing the issue live.
+two log sources while reproducing the issue live. The logging calls
+described below were removed from the code once the 2026-08-27 bridge-
+unreachable bug was fixed and confirmed stable — this section documents
+how to reinstate them if a similar class of bug needs tracing again.
 
 ### Log sources
 
 1. **`hue-api.py` calls** — the script swallows every exception and always
    exits 0 (see `main()`'s outer `try/except: pass`), so nothing about a
-   failed bridge call is visible unless logged. A `_log()` helper writes
-   timestamped `start`/`ok`/`FAIL` lines (with timing and exception
-   detail) to `~/.cache/omarchy-hue-debug.log`.
+   failed bridge call is visible unless logged. Add a `_log(msg)` helper
+   that appends timestamped lines to `~/.cache/omarchy-hue-debug.log`,
+   e.g.:
 
-2. **`Panel.qml`'s state transitions** — a `dlog(msg)` helper
-   (`console.log("[hue-debug] " + msg)`) is placed at `refresh()`,
+   ```python
+   def _log(msg):
+       try:
+           ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+           with open(DEBUG_LOG, "a") as f:
+               f.write("%s %s\n" % (ts, msg))
+       except Exception:
+           pass
+   ```
+
+   and call it around `_dispatch(op)` in `main()` with `start`/`ok`/`FAIL`
+   lines (include timing and exception detail on failure).
+
+2. **`Panel.qml`'s state transitions** — add a `dlog(msg)` helper
+   (`console.log("[hue-debug] " + msg)`) and place calls at `refresh()`,
    `finishFetch()`, `assembleRooms()`, `queueAction()`/
-   `drainActionQueue()`, and the `lightsProc`/`groupsProc`/`actionProc`
-   exit handlers. Tail the *running* shell instance's console output with:
+   `drainActionQueue()`, and the `groupsProc`/`scenesProc`/`actionProc`/
+   `roomLightsProc` exit and stream-finished handlers — those are the
+   spots that mattered when chasing the self-cancelling-refresh race and
+   action-queue coalescing bugs. Tail the *running* shell instance's
+   console output with:
 
    ```
    quickshell log -f -p /usr/share/omarchy/shell

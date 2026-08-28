@@ -91,26 +91,19 @@ Panel {
     root.controller.hide()
   }
 
-  function dlog(msg) {
-    console.log("[hue-debug] " + msg)
-  }
-
   function refresh() {
     if (!root.config) {
       configFile.reload()
       return
     }
     if (actionProc.running || root.actionQueue.length > 0) {
-      dlog("refresh: deferred, queue busy (actionProc.running=" + actionProc.running + " queueLen=" + root.actionQueue.length + ")")
       resyncTimer.restart()
       return
     }
     if (groupsProc.running || scenesProc.running) {
-      dlog("refresh: deferred, fetch already in flight")
       resyncTimer.restart()
       return
     }
-    dlog("refresh: starting fetch")
     root.lastFetchFailed = false
     if (root.visibleRooms.length === 0) root.loading = true
     Qt.callLater(startFetches)
@@ -127,7 +120,6 @@ Panel {
 
   function finishFetch(success) {
     root.pendingFetches--
-    dlog("finishFetch(" + success + ") pendingFetches=" + root.pendingFetches)
     if (success === false) root.lastFetchFailed = true
     if (root.pendingFetches <= 0) {
       root.loading = false
@@ -136,9 +128,7 @@ Panel {
   }
 
   function assembleRooms() {
-    dlog("assembleRooms: visibleRooms=" + root.visibleRooms.length + " scenes=" + root.scenes.length)
     if (root.activeView === "room" && root.findRoom(root.activeRoomId) === null) {
-      dlog("assembleRooms: active room not found, falling back to list")
       root.activeView = "list"
     }
   }
@@ -208,12 +198,10 @@ Panel {
       var pending = root.actionQueue[i]
       if (pending.op === op && pending.id === targetId) {
         for (var key in body) pending.body[key] = body[key]
-        dlog("queueAction: merged into pending " + op + " " + targetId + " " + JSON.stringify(pending.body))
         return
       }
     }
     root.actionQueue.push({ op: op, id: targetId, body: body })
-    dlog("queueAction: queued " + op + " " + targetId + " " + JSON.stringify(body) + " (queueLen=" + root.actionQueue.length + ")")
     drainActionQueue()
   }
 
@@ -221,7 +209,6 @@ Panel {
     if (actionProc.running) return
     if (root.actionQueue.length === 0) return
     var next = root.actionQueue.shift()
-    dlog("drainActionQueue: starting " + next.op + " " + next.id + " " + JSON.stringify(next.body) + " (queueLen=" + root.actionQueue.length + ")")
     actionProc.command = HueApi.apiCmd([next.op, next.id, JSON.stringify(next.body)])
     actionProc.running = true
   }
@@ -285,7 +272,7 @@ Panel {
     interval: 15000
     repeat: true
     running: root.config !== null
-    onTriggered: { dlog("pollTimer fired"); root.refresh() }
+    onTriggered: root.refresh()
   }
 
   Timer {
@@ -300,7 +287,6 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        dlog("groupsProc stream finished, text.length=" + text.length)
         var fetched = HueApi.parseGroups(text).filter(function(r) { return r.lightIds.length > 0 })
         var knownById = {}
         for (var i = 0; i < root.visibleRooms.length; i++) knownById[root.visibleRooms[i].id] = root.visibleRooms[i]
@@ -322,7 +308,6 @@ Panel {
       }
     }
     onExited: function(exitCode) {
-      dlog("groupsProc exited " + exitCode)
       if (exitCode !== 0) root.finishFetch(false)
     }
   }
@@ -332,13 +317,11 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        dlog("scenesProc stream finished, text.length=" + text.length)
         root.scenes = HueApi.parseScenes(text)
         root.finishFetch(true)
       }
     }
     onExited: function(exitCode) {
-      dlog("scenesProc exited " + exitCode)
       if (exitCode !== 0) root.finishFetch(false)
     }
   }
@@ -346,7 +329,6 @@ Panel {
   Process {
     id: actionProc
     onExited: function(exitCode) {
-      dlog("actionProc exited " + exitCode)
       root.drainActionQueue()
     }
   }
@@ -357,16 +339,12 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        dlog("roomLightsProc stream finished for " + roomLightsProc.forRoomId + ", text.length=" + text.length)
         var room = root.findRoom(roomLightsProc.forRoomId)
         if (room) {
           var bri = HueApi.roomBrightness(text, room.lightIds)
           if (bri !== null) root.patchRoom(room.id, { bri: bri })
         }
       }
-    }
-    onExited: function(exitCode) {
-      dlog("roomLightsProc exited " + exitCode)
     }
   }
 

@@ -144,24 +144,18 @@ class DispatchValidationTests(unittest.TestCase):
             put.assert_not_called()
 
 
-class MainLoggingTests(unittest.TestCase):
-    def test_main_logs_and_reraises_on_failure(self):
-        with mock.patch.object(hue_api, "_dispatch", side_effect=RuntimeError("boom")), \
-             mock.patch.object(hue_api, "_log") as log:
-            sys.argv = ["hue-api.py", "get-lights"]
-            with self.assertRaises(RuntimeError):
-                hue_api.main()
-            fail_calls = [c for c in log.call_args_list if "FAIL" in c.args[0]]
-            self.assertEqual(len(fail_calls), 1)
-            self.assertIn("RuntimeError", fail_calls[0].args[0])
-
-    def test_main_logs_ok_on_success(self):
-        with mock.patch.object(hue_api, "_dispatch"), \
-             mock.patch.object(hue_api, "_log") as log:
+class MainDispatchTests(unittest.TestCase):
+    def test_main_dispatches_with_op_argument(self):
+        with mock.patch.object(hue_api, "_dispatch") as dispatch:
             sys.argv = ["hue-api.py", "get-lights"]
             hue_api.main()
-            ok_calls = [c for c in log.call_args_list if c.args[0].startswith("ok")]
-            self.assertEqual(len(ok_calls), 1)
+            dispatch.assert_called_once_with("get-lights")
+
+    def test_main_noop_without_op_argument(self):
+        with mock.patch.object(hue_api, "_dispatch") as dispatch:
+            sys.argv = ["hue-api.py"]
+            hue_api.main()
+            dispatch.assert_not_called()
 
 
 if __name__ == "__main__":
