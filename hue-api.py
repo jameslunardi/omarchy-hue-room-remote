@@ -186,6 +186,17 @@ def _valid_id_map_of_id_lists(value):
     return True
 
 
+def _valid_id_map_of_ids(value):
+    if not isinstance(value, dict):
+        return False
+    for k, v in value.items():
+        if not _ID_RE.fullmatch(str(k)):
+            return False
+        if not _ID_RE.fullmatch(str(v)):
+            return False
+    return True
+
+
 def _write_order(body_json):
     body = json.loads(body_json)
     if not isinstance(body, dict):
@@ -193,6 +204,8 @@ def _write_order(body_json):
     if "roomOrder" in body and not _valid_id_list(body["roomOrder"]):
         return
     if "sceneOrder" in body and not _valid_id_map_of_id_lists(body["sceneOrder"]):
+        return
+    if "lastScene" in body and not _valid_id_map_of_ids(body["lastScene"]):
         return
 
     config_path = os.path.join(
@@ -211,7 +224,7 @@ def _write_order(body_json):
     except (OSError, ValueError):
         pass
 
-    for key in ("roomOrder", "sceneOrder"):
+    for key in ("roomOrder", "sceneOrder", "lastScene"):
         if key in body:
             cfg[key] = body[key]
 

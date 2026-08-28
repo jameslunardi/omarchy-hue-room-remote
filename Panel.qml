@@ -178,6 +178,7 @@ Panel {
     for (var k in root.lastSceneByRoom) lastScene[k] = root.lastSceneByRoom[k]
     lastScene[roomId] = sceneId
     root.lastSceneByRoom = lastScene
+    root.queueAction("write-order", "order", { lastScene: lastScene })
     root.patchRoom(roomId, { on: true })
     root.queueAction("put-group", roomId, { scene: sceneId })
     root.scheduleRefresh()
@@ -291,14 +292,17 @@ Panel {
         var parsed = JSON.parse(text())
         root.roomOrder = Array.isArray(parsed.roomOrder) ? parsed.roomOrder.map(String) : []
         root.sceneOrderByRoom = (parsed.sceneOrder && typeof parsed.sceneOrder === "object") ? parsed.sceneOrder : {}
+        root.lastSceneByRoom = (parsed.lastScene && typeof parsed.lastScene === "object") ? parsed.lastScene : {}
       } catch (e) {
         root.roomOrder = []
         root.sceneOrderByRoom = {}
+        root.lastSceneByRoom = {}
       }
     }
     onLoadFailed: {
       root.roomOrder = []
       root.sceneOrderByRoom = {}
+      root.lastSceneByRoom = {}
     }
   }
 
@@ -656,7 +660,15 @@ Panel {
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(2)
+                  spacing: Style.space(6)
+
+                  ToggleSwitch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: roomRow.modelData.on
+                    foreground: root.bar.foreground
+                    accent: Color.accent
+                    onToggled: root.toggleRoom(roomRow.modelData.id, !roomRow.modelData.on)
+                  }
 
                   PanelActionButton {
                     iconText: "▲"

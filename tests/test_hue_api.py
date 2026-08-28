@@ -133,6 +133,33 @@ class WriteOrderTests(unittest.TestCase):
         hue_api._write_order(json.dumps(["not", "a", "dict"]))
         self.assertFalse(os.path.exists(self.order_path()))
 
+    def test_writes_last_scene(self):
+        hue_api._write_order(json.dumps({"lastScene": {"2": "s1"}}))
+        with open(self.order_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"lastScene": {"2": "s1"}})
+
+    def test_merges_last_scene_without_clobbering_room_order(self):
+        os.makedirs(os.path.dirname(self.order_path()))
+        with open(self.order_path(), "w") as f:
+            json.dump({"roomOrder": ["2", "1"]}, f)
+        hue_api._write_order(json.dumps({"lastScene": {"2": "s1"}}))
+        with open(self.order_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"roomOrder": ["2", "1"], "lastScene": {"2": "s1"}})
+
+    def test_rejects_non_dict_last_scene_silently(self):
+        hue_api._write_order(json.dumps({"lastScene": ["not", "a", "dict"]}))
+        self.assertFalse(os.path.exists(self.order_path()))
+
+    def test_rejects_invalid_room_id_key_in_last_scene_silently(self):
+        hue_api._write_order(json.dumps({"lastScene": {"has space": "s1"}}))
+        self.assertFalse(os.path.exists(self.order_path()))
+
+    def test_rejects_invalid_scene_id_value_in_last_scene_silently(self):
+        hue_api._write_order(json.dumps({"lastScene": {"2": "has space"}}))
+        self.assertFalse(os.path.exists(self.order_path()))
+
 
 class DispatchValidationTests(unittest.TestCase):
     def test_get_scenes_requests_scenes_path(self):
