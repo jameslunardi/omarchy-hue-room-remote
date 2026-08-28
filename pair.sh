@@ -59,6 +59,18 @@ PY
   printf '%s\n' "$bridge_id"
 }
 
+write_state() {
+  local bridge_ip="$1" bridge_id="$2" username="$3"
+  printf '%s\n%s\n%s\n' "$bridge_ip" "$bridge_id" "$username" | python3 -c "
+import json, os, sys
+bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
+fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as f:
+    json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
+    f.write('\n')
+"
+}
+
 pair() {
   local ip="$1" bridge_id="$2" response username
   response=$(curl -fsS --max-time 8 --cacert "$CACERT" \
@@ -130,23 +142,9 @@ fi
 ok "Got username: ${username:0:4}***"
 
 mkdir -p "$STATE_DIR"
-printf '%s\n%s\n%s\n' "$local_ip" "$bridge_id" "$username" | python3 -c "
-import json, os, sys
-bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
-fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
-    f.write('\n')
-" 2>/dev/null || {
+write_state "$local_ip" "$bridge_id" "$username" 2>/dev/null || {
   rm -f "$STATE_FILE" 2>/dev/null
-  printf '%s\n%s\n%s\n' "$local_ip" "$bridge_id" "$username" | python3 -c "
-import json, os, sys
-bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
-fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as f:
-    json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
-    f.write('\n')
-"
+  write_state "$local_ip" "$bridge_id" "$username"
 }
 ok "Saved config to $STATE_FILE"
 

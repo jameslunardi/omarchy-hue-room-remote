@@ -140,34 +140,37 @@ def _dispatch(op):
         print(len(lights))
 
 
+_ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
+
+
+def _atomic_write(path, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+            os.fchmod(fd, 0o600)
+        except (OSError, ValueError):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(payload)
+
+
 def _write_favorite(body_json):
     body = json.loads(body_json)
     if not isinstance(body, dict):
         return
     room_id = str(body.get("roomId", ""))
-    if room_id and not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}', room_id):
+    if room_id and not _ID_RE.fullmatch(room_id):
         return
     config_path = os.path.join(
         os.path.expanduser("~"), ".config/omarchy/settings/hue-favorite.json")
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    payload = json.dumps({"favoriteRoomId": room_id}) + "\n"
-    try:
-        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        try:
-            fd = os.open(config_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
-            os.fchmod(fd, 0o600)
-        except (OSError, ValueError):
-            try:
-                os.remove(config_path)
-            except OSError:
-                pass
-            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write(payload)
-
-
-_ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
+    _atomic_write(config_path, json.dumps({"favoriteRoomId": room_id}) + "\n")
 
 
 def _valid_id_list(value):
@@ -212,7 +215,6 @@ def _write_order(body_json):
 
     config_path = os.path.join(
         os.path.expanduser("~"), ".config/omarchy/settings/hue-order.json")
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
     cfg = {}
     try:
         fd = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW)
@@ -230,21 +232,7 @@ def _write_order(body_json):
         if key in body:
             cfg[key] = body[key]
 
-    payload = json.dumps(cfg, indent=2) + "\n"
-    try:
-        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        try:
-            fd = os.open(config_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
-            os.fchmod(fd, 0o600)
-        except (OSError, ValueError):
-            try:
-                os.remove(config_path)
-            except OSError:
-                pass
-            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write(payload)
+    _atomic_write(config_path, json.dumps(cfg, indent=2) + "\n")
 
 
 if __name__ == "__main__":

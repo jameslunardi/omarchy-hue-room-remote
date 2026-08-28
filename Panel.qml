@@ -50,6 +50,10 @@ Panel {
     return ""
   }
 
+  function withAlpha(color, alpha) {
+    return Qt.rgba(color.r, color.g, color.b, alpha)
+  }
+
   function findRoom(roomId) {
     for (var i = 0; i < root.visibleRooms.length; i++) {
       if (root.visibleRooms[i].id === roomId) return root.visibleRooms[i]
@@ -343,7 +347,6 @@ Panel {
   }
 
   Timer {
-    id: pollTimer
     interval: 15000
     repeat: true
     running: root.config !== null
@@ -633,10 +636,10 @@ Panel {
                 opacity: isHidden ? 0.4 : 1.0
                 radius: Style.space(8)
                 color: roomRowMouse.containsMouse
-                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
-                  : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+                  ? root.withAlpha(root.bar.foreground, 0.10)
+                  : root.withAlpha(root.bar.foreground, 0.04)
                 border.width: 1
-                border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, roomRowMouse.containsMouse ? 0.28 : 0.14)
+                border.color: root.withAlpha(root.bar.foreground, roomRowMouse.containsMouse ? 0.28 : 0.14)
 
                 MouseArea {
                   id: roomRowMouse
@@ -789,7 +792,7 @@ Panel {
           height: parent.height
           radius: Style.space(6)
           color: backMouse.containsMouse
-            ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
+            ? root.withAlpha(root.bar.foreground, 0.10)
             : "transparent"
           border.width: 1
           border.color: Qt.darker(root.bar.foreground, 1.6)
@@ -876,10 +879,10 @@ Panel {
             height: sceneText.implicitHeight + Style.space(16)
             radius: Style.space(8)
             color: sceneMouse.containsMouse
-              ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
-              : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+              ? root.withAlpha(root.bar.foreground, 0.10)
+              : root.withAlpha(root.bar.foreground, 0.04)
             border.width: 1
-            border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, sceneMouse.containsMouse ? 0.28 : 0.14)
+            border.color: root.withAlpha(root.bar.foreground, sceneMouse.containsMouse ? 0.28 : 0.14)
 
             Text {
               id: sceneText
