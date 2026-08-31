@@ -281,8 +281,13 @@ Panel {
 
   Component.onCompleted: root.checkStatus()
 
+  // hue_api.py's own settings writes honor $XDG_CONFIG_HOME the same way;
+  // reading from a different location here would mean writes and reads
+  // silently disagree for anyone with it customized.
+  readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")
+
   property FileView favoriteFile: FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-favorite.json"
+    path: root.configHome + "/omarchy/settings/hue-favorite.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
@@ -298,7 +303,7 @@ Panel {
   }
 
   property FileView orderFile: FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-order.json"
+    path: root.configHome + "/omarchy/settings/hue-order.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
@@ -346,7 +351,7 @@ Panel {
   Timer {
     interval: 15000
     repeat: true
-    running: root.paired
+    running: root.paired && root.opened
     onTriggered: root.refresh()
   }
 
@@ -580,7 +585,7 @@ Panel {
                 cursorShape: Qt.PointingHandCursor
                 hoverEnabled: true
                 onClicked: {
-                  var pairPath = Qt.resolvedUrl("pair.sh").toString().replace("file://", "")
+                  var pairPath = HueApi.resolveScriptPath(Qt.resolvedUrl("pair.sh").toString())
                   Quickshell.execDetached(["omarchy-launch-terminal", "bash", pairPath])
                 }
               }

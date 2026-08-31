@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PAIR_SH="$SCRIPT_DIR/../pair.sh"
 
 eval "$(sed -n '/^valid_ip()/,/^}/p' "$PAIR_SH")"
+eval "$(sed -n '/^shred_file()/,/^}/p' "$PAIR_SH")"
 
 fail=0
 
@@ -43,5 +44,23 @@ assert_invalid "1.2.3"
 assert_invalid "1.2.3.4.5"
 assert_invalid "not.an.ip.addr"
 assert_invalid ""
+
+# shred_file (SEC-02): zeroes a regular owned file's content in place, so a
+# re-pair's rm -f doesn't leave the superseded username in unallocated disk
+# sectors. Use a hard link to keep the inode alive past this call so the
+# zeroed content can still be inspected.
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+target="$TMP_DIR/hue.json"
+witness="$TMP_DIR/witness.json"
+printf 'supersecretusername' > "$target"
+ln "$target" "$witness"
+shred_file "$target"
+if [[ "$(od -An -tx1 -- "$witness" | tr -d ' \n')" =~ ^0*$ ]]; then
+  echo "ok   shred_file zeroed the file's content"
+else
+  echo "FAIL shred_file left non-zero content behind"
+  fail=1
+fi
 
 exit $fail

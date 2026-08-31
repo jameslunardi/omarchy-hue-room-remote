@@ -2,6 +2,17 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const HueApi = require("../hue_api.js")
 
+test("resolveScriptPath strips the file:// scheme", () => {
+  assert.equal(HueApi.resolveScriptPath("file:///home/user/plugin/hue_api.py"),
+    "/home/user/plugin/hue_api.py")
+})
+
+test("resolveScriptPath decodes percent-encoded characters", () => {
+  assert.equal(
+    HueApi.resolveScriptPath("file:///home/user/My%20Plugins/hue_api.py"),
+    "/home/user/My Plugins/hue_api.py")
+})
+
 test("isValidId accepts hyphenated Hue usernames", () => {
   assert.equal(HueApi.isValidId("abc-123_XYZ"), true)
   assert.equal(HueApi.isValidId("a".repeat(40)), true)

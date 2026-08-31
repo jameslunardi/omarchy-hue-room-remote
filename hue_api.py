@@ -13,11 +13,33 @@ import sys
 import tempfile
 import urllib.request
 
-CREDS_FILE = os.path.join(
-    os.path.expanduser("~"), ".local/state/omarchy/settings/hue.json")
-CACERT = os.path.join(
-    os.path.expanduser("~"),
-    ".config/omarchy/plugins/lunardi0x01.hue-room-remote/hue_bridge_cacert.pem")
+def _xdg_state_home():
+    return os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+
+
+def _xdg_config_home():
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+
+
+def _resolve_cacert(config_home):
+    # Prefer the copy sitting next to this script -- makes a dev clone or
+    # standalone test run work without also having a live install present.
+    # During real operation this always resolves to the same file the
+    # install-path fallback would have anyway, since Quickshell always
+    # invokes this script from within the live install directory.
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    local_cacert = os.path.join(script_dir, "hue_bridge_cacert.pem")
+    if os.path.isfile(local_cacert):
+        return local_cacert
+    return os.path.join(
+        config_home,
+        "omarchy/plugins/lunardi0x01.hue-room-remote/hue_bridge_cacert.pem")
+
+
+STATE_HOME = _xdg_state_home()
+CONFIG_HOME = _xdg_config_home()
+CREDS_FILE = os.path.join(STATE_HOME, "omarchy/settings/hue.json")
+CACERT = _resolve_cacert(CONFIG_HOME)
 
 MAX_CREDS_BYTES = 4096
 MAX_ORDER_BYTES = 65536
@@ -50,7 +72,16 @@ def _get_opener():
 def _get_no_redirect_opener():
     global _no_redirect_opener
     if _no_redirect_opener is None:
-        _no_redirect_opener = urllib.request.build_opener(_NoRedirectHandler())
+        # Insecure mode (no bridgeId yet, connecting straight to the bridge's
+        # IP): the cert's SAN names the bridge id, not the IP, so hostname
+        # checking can never pass here -- but the cert should still chain to
+        # our bundled root. Pinning cafile=CACERT with check_hostname=False
+        # (rather than disabling verification outright) still rejects a
+        # cert from an unrelated/untrusted source.
+        ctx = ssl.create_default_context(cafile=CACERT)
+        ctx.check_hostname = False
+        _no_redirect_opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=ctx), _NoRedirectHandler())
     return _no_redirect_opener
 
 
@@ -237,8 +268,7 @@ def _write_favorite(body_json):
     room_id = str(body.get("roomId", ""))
     if room_id and not _ID_RE.fullmatch(room_id):
         return
-    config_path = os.path.join(
-        os.path.expanduser("~"), ".config/omarchy/settings/hue-favorite.json")
+    config_path = os.path.join(CONFIG_HOME, "omarchy/settings/hue-favorite.json")
     _atomic_write(config_path, json.dumps({"favoriteRoomId": room_id}) + "\n")
 
 
@@ -282,8 +312,7 @@ def _write_order(body_json):
     if "lastScene" in body and not _valid_id_map_of_ids(body["lastScene"]):
         return
 
-    config_path = os.path.join(
-        os.path.expanduser("~"), ".config/omarchy/settings/hue-order.json")
+    config_path = os.path.join(CONFIG_HOME, "omarchy/settings/hue-order.json")
     try:
         cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
         if not isinstance(cfg, dict):

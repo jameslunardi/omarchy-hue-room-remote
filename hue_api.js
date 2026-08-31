@@ -1,5 +1,14 @@
+// Qt.resolvedUrl() percent-encodes spaces/special characters (e.g. a space
+// becomes %20); a plain "file://" strip alone would leave those in the
+// filesystem path passed to python3/bash. Decode after stripping the
+// scheme so a plugin/home directory containing such characters still
+// resolves to a real, openable path.
+function resolveScriptPath(fileUrl) {
+  return decodeURIComponent(String(fileUrl).replace(/^file:\/\//, ""))
+}
+
 var API = typeof Qt !== "undefined"
-  ? Qt.resolvedUrl("hue_api.py").toString().replace("file://", "")
+  ? resolveScriptPath(Qt.resolvedUrl("hue_api.py").toString())
   : "hue_api.py"
 
 function apiCmd(args) {
@@ -178,6 +187,7 @@ function roomBrightness(text, lightIds) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     apiCmd: apiCmd,
+    resolveScriptPath: resolveScriptPath,
     isValidId: isValidId,
     parseStatus: parseStatus,
     parseJsonObject: parseJsonObject,

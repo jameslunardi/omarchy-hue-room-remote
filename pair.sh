@@ -81,6 +81,28 @@ with os.fdopen(fd, 'w') as f:
 " "$STATE_FILE"
 }
 
+# Best-effort zero-fill before a re-pair's rm -f unlinks the old config, so
+# the superseded username doesn't just sit in unallocated disk sectors.
+# Same open/fstat/S_ISREG+owner shape as cleanup.sh's secure_remove, minus
+# the removal itself -- the caller does its own remove-and-retry.
+shred_file() {
+  local f="$1"
+  python3 -c "
+import os, stat, sys
+path = sys.argv[1]
+try:
+    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW)
+    try:
+        st = os.fstat(fd)
+        if stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid() and st.st_size > 0:
+            os.write(fd, b'\x00' * st.st_size)
+    finally:
+        os.close(fd)
+except OSError:
+    pass
+" "$f" 2>/dev/null || true
+}
+
 pair() {
   local ip="$1" bridge_id="$2" response username
   response=$(curl -fsS --max-time 8 --cacert "$CACERT" \
@@ -176,6 +198,7 @@ if [[ -L "$STATE_DIR" ]]; then
 fi
 mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 write_state "$local_ip" "$bridge_id" "$username" 2>/dev/null || {
+  shred_file "$STATE_FILE"
   rm -f "$STATE_FILE" 2>/dev/null
   write_state "$local_ip" "$bridge_id" "$username"
 }
