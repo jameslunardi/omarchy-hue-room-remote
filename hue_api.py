@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import ssl
+import stat
 import sys
 import tempfile
 import urllib.request
@@ -18,6 +19,7 @@ CACERT = os.path.join(
     ".config/omarchy/plugins/lunardi0x01.hue-room-remote/hue_bridge_cacert.pem")
 
 MAX_CREDS_BYTES = 4096
+MAX_ORDER_BYTES = 65536
 MAX_RESPONSE_BYTES = 1024 * 1024
 
 _opener = None
@@ -71,15 +73,27 @@ class _BridgeResolver:
         socket.getaddrinfo = self._orig
 
 
-def _load_creds():
-    fd = os.open(CREDS_FILE, os.O_RDONLY | os.O_NOFOLLOW)
+def _read_local_json_capped(path, max_bytes):
+    # O_NONBLOCK makes open() return immediately even if `path` is a FIFO
+    # with no writer -- without it, a named pipe planted at a predictable
+    # settings path would hang this call (and everything waiting on it)
+    # indefinitely. It has no effect on a regular file. The S_ISREG check
+    # below then rejects a FIFO/socket/device before any read is attempted.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd) as f:
-        if os.fstat(fd).st_uid != os.getuid():
-            raise ValueError("credentials file not owned by current user")
-        data = f.read(MAX_CREDS_BYTES + 1)
-    if len(data) > MAX_CREDS_BYTES:
-        raise ValueError("credentials file too large")
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ValueError("not a regular file")
+        if st.st_uid != os.getuid():
+            raise ValueError("not owned by current user")
+        data = f.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError("file too large")
     return json.loads(data)
+
+
+def _load_creds():
+    return _read_local_json_capped(CREDS_FILE, MAX_CREDS_BYTES)
 
 
 def _bridge_url(creds, path):
@@ -186,6 +200,7 @@ def _dispatch(op):
 def _atomic_write(path, payload):
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
+    os.chmod(directory, 0o700)
     dir_fd = os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         if os.fstat(dir_fd).st_uid != os.getuid():
@@ -263,18 +278,12 @@ def _write_order(body_json):
 
     config_path = os.path.join(
         os.path.expanduser("~"), ".config/omarchy/settings/hue-order.json")
-    cfg = {}
     try:
-        fd = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW)
-        try:
-            with os.fdopen(fd) as f:
-                cfg = json.load(f)
-            if not isinstance(cfg, dict):
-                cfg = {}
-        except Exception:
+        cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
+        if not isinstance(cfg, dict):
             cfg = {}
-    except (OSError, ValueError):
-        pass
+    except Exception:
+        cfg = {}
 
     for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
         if key in body:

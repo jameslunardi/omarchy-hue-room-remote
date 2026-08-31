@@ -33,13 +33,19 @@ pytest/jest/mocha for a plugin this size.
   (including its merge-not-clobber behavior across `roomOrder`/
   `sceneOrder`/`lastScene`/`hiddenRooms`), the argument-validation regexes
   in `_dispatch`, `_get_status` (never leaks `username`/`bridgeIp`),
-  `_load_creds` (symlink/owner/size-cap guards), `_read_json_capped`,
-  `_NoRedirectHandler`, and `_atomic_write`'s mkstemp+rename symlink
-  regression test (plants a symlink at the target path first, asserts the
-  real file it points at is untouched). Loaded via
-  `importlib.util.spec_from_file_location` since the filename has a
-  hyphen. `_request`/`_put` (the actual bridge HTTP calls) aren't
-  exercised yet — they'd need a mocked HTTPS layer.
+  `_read_json_capped`, `_NoRedirectHandler`, `_atomic_write`'s
+  mkstemp+rename symlink regression test (plants a symlink at the target
+  path first, asserts the real file it points at is untouched) and its
+  directory-lockdown test (`chmod 700` on the settings directory), and
+  `_read_local_json_capped` — the shared helper behind both `_load_creds`
+  and `_write_order`'s pre-read — covering symlink/owner/size-cap guards
+  plus a FIFO planted at the target path (`os.mkfifo`), asserting it's
+  rejected instead of hanging the call. Loaded via
+  `importlib.util.spec_from_file_location` since it lives at the repo
+  root rather than inside the `tests` package, so a normal `import
+  hue_api` isn't guaranteed to resolve regardless of invocation method.
+  `_request`/`_put` (the actual bridge HTTP calls) aren't exercised yet —
+  they'd need a mocked HTTPS layer.
 - **`pair.sh`** (`test_pair_sh.sh`): only `valid_ip`, extracted with
   `sed` since the rest of the script performs live bridge discovery with
   no sourceable guard, so it can't be safely imported into a test process.

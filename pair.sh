@@ -141,7 +141,7 @@ if [[ -z "$username" ]]; then
 fi
 ok "Got username: ${username:0:4}***"
 
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 write_state "$local_ip" "$bridge_id" "$username" 2>/dev/null || {
   rm -f "$STATE_FILE" 2>/dev/null
   write_state "$local_ip" "$bridge_id" "$username"

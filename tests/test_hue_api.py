@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -215,6 +216,44 @@ class LoadCredsTests(unittest.TestCase):
             hue_api._load_creds()
 
 
+class ReadLocalJsonCappedTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "data.json")
+
+    def test_parses_well_formed_file(self):
+        with open(self.path, "w") as f:
+            json.dump({"a": 1}, f)
+        self.assertEqual(hue_api._read_local_json_capped(self.path, 4096), {"a": 1})
+
+    def test_rejects_oversized_file(self):
+        with open(self.path, "w") as f:
+            f.write("x" * 4097)
+        with self.assertRaises(ValueError):
+            hue_api._read_local_json_capped(self.path, 4096)
+
+    def test_rejects_symlinked_file(self):
+        real = os.path.join(self.tmp.name, "real.json")
+        with open(real, "w") as f:
+            f.write("{}")
+        os.symlink(real, self.path)
+        with self.assertRaises(OSError):
+            hue_api._read_local_json_capped(self.path, 4096)
+
+    def test_rejects_file_not_owned_by_current_user(self):
+        with open(self.path, "w") as f:
+            f.write("{}")
+        with mock.patch("os.getuid", return_value=os.getuid() + 1):
+            with self.assertRaises(ValueError):
+                hue_api._read_local_json_capped(self.path, 4096)
+
+    def test_rejects_fifo_without_hanging(self):
+        os.mkfifo(self.path)
+        with self.assertRaises(ValueError):
+            hue_api._read_local_json_capped(self.path, 4096)
+
+
 class _FakeResponse:
     def __init__(self, data):
         self._data = data
@@ -270,6 +309,14 @@ class AtomicWriteTests(unittest.TestCase):
         target = os.path.join(directory, "hue-order.json")
         hue_api._atomic_write(target, "{}\n")
         self.assertEqual(os.listdir(directory), ["hue-order.json"])
+
+    def test_locks_settings_directory_to_owner_only(self):
+        directory = os.path.join(self.tmp.name, "settings")
+        os.makedirs(directory, mode=0o777)
+        os.chmod(directory, 0o777)
+        target = os.path.join(directory, "hue-favorite.json")
+        hue_api._atomic_write(target, "{}\n")
+        self.assertEqual(stat.S_IMODE(os.stat(directory).st_mode), 0o700)
 
 
 class GetStatusTests(unittest.TestCase):
