@@ -21,11 +21,56 @@ function isValidId(id) {
   return /^[a-zA-Z0-9_-]{1,40}$/.test(String(id))
 }
 
+// hue_api.py's write side (_write_order/_write_favorite) enforces this same
+// id format before persisting hue-order.json/hue-favorite.json, but the
+// read side (panel.qml's FileView onLoaded) previously trusted the file's
+// shape without validating individual ids. These mirror that write-side
+// validation for use on read, dropping invalid entries rather than
+// rejecting the whole file -- appropriate for graceful degradation on read,
+// as opposed to an atomic validated write. For legitimate data (always
+// written by the already-validated Python writer) these are a no-op: every
+// id already matches the pattern, so nothing gets filtered.
+function sanitizeIdList(list) {
+  return Array.isArray(list) ? list.map(String).filter(isValidId) : []
+}
+
+function sanitizeIdListMap(map) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {}
+  var out = {}
+  for (var k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue
+    if (!isValidId(k)) continue
+    out[k] = sanitizeIdList(map[k])
+  }
+  return out
+}
+
+function sanitizeIdMap(map) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {}
+  var out = {}
+  for (var k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue
+    if (!isValidId(k)) continue
+    var v = String(map[k])
+    if (isValidId(v)) out[k] = v
+  }
+  return out
+}
+
 // A malicious/compromised bridge shouldn't be able to force unbounded
 // memory use or slow the panel to a crawl -- cap the raw text a bridge
 // response can be before it's even handed to JSON.parse, and cap how many
 // rooms/scenes/lights get parsed out of it below.
-var MAX_JSON_TEXT_LENGTH = 262144
+//
+// Deliberately larger than hue_api.py's MAX_RESPONSE_BYTES (1 MiB): Python
+// re-emits bridge data via json.dumps(ensure_ascii=True), which escapes
+// every non-ASCII character as \uXXXX and can expand non-ASCII room/scene
+// names up to ~6x. The real DoS boundary against a malicious bridge is
+// enforced upstream by MAX_RESPONSE_BYTES; this cap only needs to
+// comfortably fit that already-bounded, already-re-encoded output -- it's
+// also reused (via parseJsonObject) to bound reads of the local
+// hue-favorite.json/hue-order.json settings files in panel.qml.
+var MAX_JSON_TEXT_LENGTH = 2 * 1024 * 1024
 var MAX_PARSED_ITEMS = 500
 var MAX_NAME_LENGTH = 200
 
@@ -35,8 +80,16 @@ var MAX_NAME_LENGTH = 200
 // Text.AutoText, which would interpret markup-like content as rich text.
 // Stripping angle brackets at the source means it's inert wherever it's
 // rendered, not just in the Text elements we happen to have hardened.
+// Beyond angle brackets, also strip characters that can visually mislead
+// without being "markup": C0 controls/DEL, zero-width space/ZWNJ/ZWJ, line/
+// paragraph separators, bidi embedding/override/isolate characters, and the
+// BOM/zero-width-no-break-space. Doesn't touch surrogate-pair ranges, so
+// multi-byte emoji/astral characters pass through untouched.
 function sanitizeName(name) {
-  return String(name).replace(/[<>]/g, "").slice(0, MAX_NAME_LENGTH)
+  return String(name)
+    .replace(/[<>]/g, "")
+    .replace(/[\u0000-\u001F\u007F\u200B-\u200D\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .slice(0, MAX_NAME_LENGTH)
 }
 
 function parseStatus(text) {
@@ -189,12 +242,16 @@ if (typeof module !== "undefined" && module.exports) {
     apiCmd: apiCmd,
     resolveScriptPath: resolveScriptPath,
     isValidId: isValidId,
+    sanitizeIdList: sanitizeIdList,
+    sanitizeIdListMap: sanitizeIdListMap,
+    sanitizeIdMap: sanitizeIdMap,
     parseStatus: parseStatus,
     parseJsonObject: parseJsonObject,
     parseGroups: parseGroups,
     parseScenes: parseScenes,
     roomIcon: roomIcon,
     applyOrder: applyOrder,
-    roomBrightness: roomBrightness
+    roomBrightness: roomBrightness,
+    MAX_JSON_TEXT_LENGTH: MAX_JSON_TEXT_LENGTH
   }
 }

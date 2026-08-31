@@ -33,29 +33,38 @@ pytest/jest/mocha for a plugin this size.
   QML's JS engine).
 - **`hue_api.py`** (`test_hue_api.py`): `_write_favorite`, `_write_order`
   (including its merge-not-clobber behavior across `roomOrder`/
-  `sceneOrder`/`lastScene`/`hiddenRooms`), the argument-validation regexes
-  in `_dispatch`, `_get_status` (never leaks `username`/`bridgeIp`),
-  `_read_json_capped`, `_NoRedirectHandler`, `_atomic_write`'s
-  mkstemp+rename symlink regression test (plants a symlink at the target
-  path first, asserts the real file it points at is untouched) and its
-  directory-lockdown test (`chmod 700` on the settings directory), and
-  `_read_local_json_capped` — the shared helper behind both `_load_creds`
-  and `_write_order`'s pre-read — covering symlink/owner/size-cap guards
-  plus a FIFO planted at the target path (`os.mkfifo`), asserting it's
-  rejected instead of hanging the call. Loaded via
-  `importlib.util.spec_from_file_location` since it lives at the repo
-  root rather than inside the `tests` package, so a normal `import
-  hue_api` isn't guaranteed to resolve regardless of invocation method.
-  `_request`/`_put` (the actual bridge HTTP calls) aren't exercised yet —
-  they'd need a mocked HTTPS layer.
-- **`pair.sh`** (`test_pair_sh.sh`): only `valid_ip`, extracted with
-  `sed` since the rest of the script performs live bridge discovery with
-  no sourceable guard, so it can't be safely imported into a test process.
-  Its response-bounding (`head -c "$MAX_BOOTSTRAP_RESPONSE_BYTES"` on the
-  two curl calls, a capped `read()` in `fetch_bridge_id`'s embedded
-  Python), the `STATE_DIR` symlink pre-check, and the hardened "existing
-  config found" read (open/fstat/`S_ISREG`+owner/bounded-read, same shape
-  as `hue_api.py`'s `_read_local_json_capped`) all have no automated
+  `sceneOrder`/`lastScene`/`hiddenRooms`, and a symlink planted at the
+  `.lock` sibling file, asserting the write silently no-ops rather than
+  writing through it), the argument-validation regexes in `_dispatch`,
+  `_get_status` (never leaks `username`/`bridgeIp`), `_read_json_capped`,
+  `_NoRedirectHandler`, `_atomic_write`'s mkstemp+rename symlink
+  regression test (plants a symlink at the target path first, asserts the
+  real file it points at is untouched) and its directory-lockdown test
+  (`chmod 700` on the settings directory), `_read_local_json_capped` — the
+  shared helper behind both `_load_creds` and `_write_order`'s pre-read —
+  covering symlink/owner/size-cap guards plus a FIFO planted at the target
+  path (`os.mkfifo`), asserting it's rejected instead of hanging the call,
+  and `_request`/`_put` (`RequestPutTests`) against a real local HTTPS
+  server: a successful round trip, a response over `MAX_RESPONSE_BYTES`
+  being rejected, `_put`'s method/`Content-Type`/body, and that a
+  redirecting response is refused end to end (not just the handler class
+  in isolation). Loaded via `importlib.util.spec_from_file_location` since
+  it lives at the repo root rather than inside the `tests` package, so a
+  normal `import hue_api` isn't guaranteed to resolve regardless of
+  invocation method.
+- **`pair.sh`** (`test_pair_sh.sh`): `valid_ip` and `shred_file`,
+  extracted with `sed` since the rest of the script performs live bridge
+  discovery with no sourceable guard, so it can't be safely imported into
+  a test process. `fetch_bridge_id` is extracted the same way and
+  exercised against a local HTTPS server (using a throwaway embedded
+  self-signed cert, same approach as `test_hue_api.py`'s own): a
+  redirecting response is refused rather than followed, and a normal
+  (non-redirecting) response still returns the bridge id correctly. Its
+  response-bounding (`head -c "$MAX_BOOTSTRAP_RESPONSE_BYTES"` on the two
+  curl calls, a capped `read()` in `fetch_bridge_id`'s embedded Python),
+  the `STATE_DIR` symlink pre-check, and the hardened "existing config
+  found" read (open/fstat/`S_ISREG`+owner/bounded-read, same shape as
+  `hue_api.py`'s `_read_local_json_capped`) still have no automated
   coverage for the same reason — verified manually instead (see
   `.project/tasklist.md` for how).
 - **`cleanup.sh`** (`test_cleanup_sh.sh`): `secure_remove`, extracted the

@@ -286,18 +286,21 @@ Panel {
   // silently disagree for anyone with it customized.
   readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")
 
+  // Reads go through HueApi.parseJsonObject (size-capped, exception-safe)
+  // rather than a raw JSON.parse, and every id is re-validated with the
+  // same [a-zA-Z0-9_-]{1,40} pattern hue_api.py's write side already
+  // enforces -- defense-in-depth consistency between the write path
+  // (_atomic_write, regex-validated) and this read path (FileView, which
+  // has no equivalent symlink/ownership hardening available at this layer).
   property FileView favoriteFile: FileView {
     path: root.configHome + "/omarchy/settings/hue-favorite.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      try {
-        var parsed = JSON.parse(text())
-        root.favoriteRoomId = String(parsed.favoriteRoomId || "")
-      } catch (e) {
-        root.favoriteRoomId = ""
-      }
+      var parsed = HueApi.parseJsonObject(text())
+      var roomId = parsed ? String(parsed.favoriteRoomId || "") : ""
+      root.favoriteRoomId = (roomId === "" || HueApi.isValidId(roomId)) ? roomId : ""
     }
     onLoadFailed: root.favoriteRoomId = ""
   }
@@ -308,18 +311,11 @@ Panel {
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      try {
-        var parsed = JSON.parse(text())
-        root.roomOrder = Array.isArray(parsed.roomOrder) ? parsed.roomOrder.map(String) : []
-        root.sceneOrderByRoom = (parsed.sceneOrder && typeof parsed.sceneOrder === "object") ? parsed.sceneOrder : {}
-        root.lastSceneByRoom = (parsed.lastScene && typeof parsed.lastScene === "object") ? parsed.lastScene : {}
-        root.hiddenRoomIds = Array.isArray(parsed.hiddenRooms) ? parsed.hiddenRooms.map(String) : []
-      } catch (e) {
-        root.roomOrder = []
-        root.sceneOrderByRoom = {}
-        root.lastSceneByRoom = {}
-        root.hiddenRoomIds = []
-      }
+      var parsed = HueApi.parseJsonObject(text())
+      root.roomOrder = HueApi.sanitizeIdList(parsed && parsed.roomOrder)
+      root.sceneOrderByRoom = HueApi.sanitizeIdListMap(parsed && parsed.sceneOrder)
+      root.lastSceneByRoom = HueApi.sanitizeIdMap(parsed && parsed.lastScene)
+      root.hiddenRoomIds = HueApi.sanitizeIdList(parsed && parsed.hiddenRooms)
     }
     onLoadFailed: {
       root.roomOrder = []

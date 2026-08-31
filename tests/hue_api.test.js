@@ -25,6 +25,43 @@ test("isValidId rejects empty, oversized, or invalid-character ids", () => {
   assert.equal(HueApi.isValidId("has/slash"), false)
 })
 
+test("sanitizeIdList keeps valid ids and drops invalid ones", () => {
+  assert.deepEqual(HueApi.sanitizeIdList(["1", "has space", "2"]), ["1", "2"])
+})
+
+test("sanitizeIdList returns an empty array for non-array input", () => {
+  assert.deepEqual(HueApi.sanitizeIdList("not-a-list"), [])
+  assert.deepEqual(HueApi.sanitizeIdList(undefined), [])
+  assert.deepEqual(HueApi.sanitizeIdList({ "1": true }), [])
+})
+
+test("sanitizeIdListMap drops an invalid key and filters invalid entries from its list", () => {
+  const result = HueApi.sanitizeIdListMap({
+    "1": ["s1", "has space", "s2"],
+    "has space": ["s3"]
+  })
+  assert.deepEqual(result, { "1": ["s1", "s2"] })
+})
+
+test("sanitizeIdListMap returns an empty object for non-object input", () => {
+  assert.deepEqual(HueApi.sanitizeIdListMap(["not", "a", "map"]), {})
+  assert.deepEqual(HueApi.sanitizeIdListMap(null), {})
+})
+
+test("sanitizeIdMap drops an entry with an invalid key or value", () => {
+  const result = HueApi.sanitizeIdMap({
+    "1": "s1",
+    "2": "has space",
+    "has space": "s2"
+  })
+  assert.deepEqual(result, { "1": "s1" })
+})
+
+test("sanitizeIdMap returns an empty object for non-object input", () => {
+  assert.deepEqual(HueApi.sanitizeIdMap(["not", "a", "map"]), {})
+  assert.deepEqual(HueApi.sanitizeIdMap(undefined), {})
+})
+
 test("parseStatus accepts a well-formed status", () => {
   const status = HueApi.parseStatus(JSON.stringify({ paired: true, bridgeId: "AABBCC" }))
   assert.deepEqual(status, { paired: true, bridgeId: "aabbcc" })
@@ -45,7 +82,7 @@ test("parseStatus drops an invalid bridgeId but keeps paired", () => {
 })
 
 test("parseJsonObject rejects text over the size cap", () => {
-  const huge = JSON.stringify({ a: "x".repeat(300000) })
+  const huge = JSON.stringify({ a: "x".repeat(HueApi.MAX_JSON_TEXT_LENGTH) })
   assert.equal(HueApi.parseJsonObject(huge), null)
 })
 
@@ -121,6 +158,20 @@ test("parseGroups strips angle brackets from names so they can't render as marku
   assert.ok(!groups[0].name.includes(">"))
 })
 
+test("parseGroups strips control and bidi-override characters from names", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Living‮room", type: "Room", lights: ["1"] }
+  }))
+  assert.equal(groups[0].name, "Livingroom")
+})
+
+test("parseGroups leaves ordinary accented Unicode names untouched", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Café", type: "Room", lights: ["1"] }
+  }))
+  assert.equal(groups[0].name, "Café")
+})
+
 test("roomIcon returns a mapped glyph for a known class", () => {
   const bedroomIcon = HueApi.roomIcon("Bedroom")
   const defaultIcon = HueApi.roomIcon("Other")
@@ -174,6 +225,20 @@ test("parseScenes strips angle brackets from names so they can't render as marku
     "s1": { name: "<script>bad</script>", group: "1" }
   }))
   assert.equal(scenes[0].name, "scriptbad/script")
+})
+
+test("parseScenes strips control and bidi-override characters from names", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "Movie‮night", group: "1" }
+  }))
+  assert.equal(scenes[0].name, "Movienight")
+})
+
+test("parseScenes leaves ordinary accented Unicode names untouched", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "Café", group: "1" }
+  }))
+  assert.equal(scenes[0].name, "Café")
 })
 
 test("applyOrder sorts items by position in the order list", () => {

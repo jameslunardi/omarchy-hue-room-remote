@@ -324,7 +324,10 @@ def _write_order(body_json):
     # a sibling file so both instances' calls serialize against each other.
     lock_path = config_path + ".lock"
     os.makedirs(os.path.dirname(lock_path), exist_ok=True)
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    except OSError:
+        return
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         try:

@@ -51,8 +51,17 @@ target = os.environ["TARGET_IP"]
 max_bytes = int(os.environ["MAX_BYTES"])
 ctx = ssl.create_default_context(cafile=cacert)
 ctx.check_hostname = False
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    # A compromised/malicious bridge shouldn't be able to 302 this
+    # unauthenticated bootstrap request to a different bridge on the LAN --
+    # mirrors hue_api.py's _NoRedirectHandler.
+    def redirect_request(self, *a, **kw):
+        return None
+
+opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx), _NoRedirect())
 try:
-    with urllib.request.urlopen("https://%s/api/config" % target, timeout=5, context=ctx) as r:
+    with opener.open("https://%s/api/config" % target, timeout=5) as r:
         raw = r.read(max_bytes + 1)
         if len(raw) > max_bytes:
             raise ValueError("response too large")

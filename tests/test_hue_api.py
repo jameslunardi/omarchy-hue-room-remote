@@ -217,6 +217,23 @@ class WriteOrderTests(unittest.TestCase):
             saved = json.load(f)
         self.assertEqual(saved, {"roomOrder": ["2", "1"], "hiddenRooms": ["3"]})
 
+    def test_does_not_follow_a_symlinked_lock_file(self):
+        # A planted symlink at hue-order.json.lock must not be opened
+        # through -- _write_order should silently no-op, the same "reject
+        # silently" behavior used for every other malformed/tampered input
+        # in this function, rather than raising or writing through it.
+        os.makedirs(os.path.dirname(self.order_path()))
+        decoy = os.path.join(self.tmp.name, "decoy.txt")
+        with open(decoy, "w") as f:
+            f.write("do not touch")
+        os.symlink(decoy, self.order_path() + ".lock")
+
+        hue_api._write_order(json.dumps({"roomOrder": ["1"]}))
+
+        self.assertFalse(os.path.exists(self.order_path()))
+        with open(decoy) as f:
+            self.assertEqual(f.read(), "do not touch")
+
 
 class XdgHomeTests(unittest.TestCase):
     def test_state_home_uses_xdg_var_when_set(self):
@@ -532,6 +549,121 @@ class NoRedirectOpenerTlsTests(unittest.TestCase):
         with self.assertRaises(urllib.error.URLError):
             with opener.open("https://127.0.0.1:%d/api/config" % self.port, timeout=3):
                 pass
+
+
+class RequestPutTests(unittest.TestCase):
+    """_request/_put's actual bridge HTTP calls, exercised against a real
+    local HTTPS server -- NoRedirectOpenerTlsTests above only covers the
+    opener's TLS trust behavior in isolation; this covers the request shape
+    (method, headers, body) these two functions actually send, and proves
+    the no-redirect opener is really wired into them end to end (not just
+    that the handler class refuses a redirect on its own, which
+    NoRedirectHandlerTests already covers)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cert_path = os.path.join(self.tmp.name, "cert.pem")
+        self.key_path = os.path.join(self.tmp.name, "key.pem")
+        with open(self.cert_path, "w") as f:
+            f.write(_TEST_CERT_PEM)
+        with open(self.key_path, "w") as f:
+            f.write(_TEST_KEY_PEM)
+        self.cacert_patch = mock.patch.object(hue_api, "CACERT", self.cert_path)
+        self.cacert_patch.start()
+        self.addCleanup(self.cacert_patch.stop)
+        hue_api._no_redirect_opener = None
+        self.addCleanup(setattr, hue_api, "_no_redirect_opener", None)
+
+    def _serve(self, handler_cls):
+        httpd = http.server.HTTPServer(("127.0.0.1", 0), handler_cls)
+        server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        server_ctx.load_cert_chain(self.cert_path, self.key_path)
+        httpd.socket = server_ctx.wrap_socket(httpd.socket, server_side=True)
+        port = httpd.socket.getsockname()[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        # addCleanup runs LIFO -- register server_close first so shutdown
+        # (stop serving) still runs before it (release the socket).
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        return port
+
+    def _creds(self, port):
+        # bridgeId left empty so _bridge_url takes the no-hostname branch
+        # and connects straight to 127.0.0.1:port via _get_no_redirect_opener
+        # -- already proven to enforce CACERT trust by NoRedirectOpenerTlsTests.
+        return {"bridgeId": "", "bridgeIp": "127.0.0.1:%d" % port, "username": "u"}
+
+    def test_request_returns_parsed_json_body(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps({"lights": {}}).encode())
+
+            def log_message(self, *args):
+                pass
+
+        port = self._serve(Handler)
+        result = hue_api._request("/lights", self._creds(port))
+        self.assertEqual(result, {"lights": {}})
+
+    def test_request_rejects_oversized_response(self):
+        # Sends a response genuinely larger than the real MAX_RESPONSE_BYTES
+        # rather than mocking the constant down -- _read_json_capped's
+        # max_bytes parameter defaults to MAX_RESPONSE_BYTES at function
+        # *definition* time, so patching the module attribute afterward
+        # wouldn't actually change what _request enforces.
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                payload = json.dumps({"a": "x" * hue_api.MAX_RESPONSE_BYTES}).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *args):
+                pass
+
+        port = self._serve(Handler)
+        with self.assertRaises(ValueError):
+            hue_api._request("/lights", self._creds(port))
+
+    def test_put_sends_method_content_type_and_body(self):
+        captured = {}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_PUT(self):
+                length = int(self.headers.get("Content-Length", 0))
+                captured["method"] = self.command
+                captured["content_type"] = self.headers.get("Content-Type")
+                captured["body"] = json.loads(self.rfile.read(length))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        port = self._serve(Handler)
+        hue_api._put(self._creds(port), "/groups/1/action", {"on": True})
+        self.assertEqual(captured["method"], "PUT")
+        self.assertEqual(captured["content_type"], "application/json")
+        self.assertEqual(captured["body"], {"on": True})
+
+    def test_request_refuses_to_follow_a_redirect(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", "https://127.0.0.1:1/elsewhere")
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        port = self._serve(Handler)
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            hue_api._request("/lights", self._creds(port))
+        ctx.exception.close()
 
 
 class AtomicWriteTests(unittest.TestCase):
