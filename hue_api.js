@@ -1,6 +1,6 @@
 var API = typeof Qt !== "undefined"
-  ? Qt.resolvedUrl("hue-api.py").toString().replace("file://", "")
-  : "hue-api.py"
+  ? Qt.resolvedUrl("hue_api.py").toString().replace("file://", "")
+  : "hue_api.py"
 
 function apiCmd(args) {
   var cmd = ["python3", API]
@@ -8,35 +8,29 @@ function apiCmd(args) {
   return cmd
 }
 
-function isValidIp(ip) {
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)
-}
-
 function isValidId(id) {
   return /^[a-zA-Z0-9_-]{1,40}$/.test(String(id))
 }
 
-function parseConfig(text) {
-  var raw = String(text || "").trim()
-  if (!raw) return null
-  try {
-    var parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return null
-    var bridgeIp = String(parsed.bridgeIp || "").trim()
-    var username = String(parsed.username || "").trim()
-    var bridgeId = String(parsed.bridgeId || "").trim().toLowerCase()
-    if (!bridgeIp || !isValidIp(bridgeIp)) return null
-    if (!username || !isValidId(username)) return null
-    if (bridgeId && !isValidId(bridgeId)) bridgeId = ""
-    return { bridgeIp: bridgeIp, username: username, bridgeId: bridgeId }
-  } catch (e) {
-    return null
-  }
+// A malicious/compromised bridge shouldn't be able to force unbounded
+// memory use or slow the panel to a crawl -- cap the raw text a bridge
+// response can be before it's even handed to JSON.parse, and cap how many
+// rooms/scenes/lights get parsed out of it below.
+var MAX_JSON_TEXT_LENGTH = 262144
+var MAX_PARSED_ITEMS = 500
+var MAX_NAME_LENGTH = 200
+
+function parseStatus(text) {
+  var obj = parseJsonObject(text)
+  if (!obj) return null
+  var bridgeId = String(obj.bridgeId || "").trim().toLowerCase()
+  if (bridgeId && !isValidId(bridgeId)) bridgeId = ""
+  return { paired: !!obj.paired, bridgeId: bridgeId }
 }
 
 function parseJsonObject(text) {
   var raw = String(text || "").trim()
-  if (!raw) return null
+  if (!raw || raw.length > MAX_JSON_TEXT_LENGTH) return null
   try {
     var parsed = JSON.parse(raw)
     return parsed && typeof parsed === "object" ? parsed : null
@@ -49,22 +43,29 @@ function parseGroups(text) {
   var obj = parseJsonObject(text)
   if (!obj) return []
   var groups = []
+  var seen = 0
   for (var id in obj) {
     if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+    if (seen >= MAX_PARSED_ITEMS) break
+    seen++
+    if (!isValidId(id)) continue
     var group = obj[id]
     var type = String(group.type || "")
     if (type !== "Room" && type !== "Zone") continue
     var action = group.action || {}
     var bri = typeof action.bri === "number" ? action.bri : 254
+    var lightIds = Array.isArray(group.lights)
+      ? group.lights.slice(0, MAX_PARSED_ITEMS).map(String).filter(isValidId)
+      : []
     groups.push({
       id: String(id),
-      name: String(group.name || "Group " + id),
+      name: String(group.name || "Group " + id).slice(0, MAX_NAME_LENGTH),
       type: type,
       class: String(group.class || "Other"),
       on: !!(group.state && group.state.any_on),
       allOn: !!(group.state && group.state.all_on),
       bri: Math.max(1, Math.min(254, bri)),
-      lightIds: Array.isArray(group.lights) ? group.lights.map(String) : []
+      lightIds: lightIds
     })
   }
   groups.sort(function(a, b) { return a.name.localeCompare(b.name) })
@@ -75,14 +76,18 @@ function parseScenes(text) {
   var obj = parseJsonObject(text)
   if (!obj) return []
   var scenes = []
+  var seen = 0
   for (var id in obj) {
     if (!Object.prototype.hasOwnProperty.call(obj, id)) continue
+    if (seen >= MAX_PARSED_ITEMS) break
+    seen++
+    if (!isValidId(id)) continue
     var scene = obj[id]
     var group = scene.group !== undefined && scene.group !== null ? String(scene.group) : ""
-    if (!group) continue
+    if (!group || !isValidId(group)) continue
     scenes.push({
       id: String(id),
-      name: String(scene.name || "Scene " + id),
+      name: String(scene.name || "Scene " + id).slice(0, MAX_NAME_LENGTH),
       group: group
     })
   }
@@ -163,9 +168,8 @@ function roomBrightness(text, lightIds) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     apiCmd: apiCmd,
-    isValidIp: isValidIp,
     isValidId: isValidId,
-    parseConfig: parseConfig,
+    parseStatus: parseStatus,
     parseJsonObject: parseJsonObject,
     parseGroups: parseGroups,
     parseScenes: parseScenes,

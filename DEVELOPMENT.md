@@ -16,8 +16,8 @@ produced. There's no build step:
    live copy (a real `git fetch` + `git merge --ff-only`, so it only
    picks up pushed commits — no shortcut for testing uncommitted changes
    other than copying the file over by hand for a quick local check).
-3. `hue-api.py`/`HueApi.js`/`pair.sh` take effect immediately (invoked
-   fresh per call). `Panel.qml` and other QML are loaded once at shell
+3. `hue_api.py`/`hue_api.js`/`pair.sh` take effect immediately (invoked
+   fresh per call). `panel.qml` and other QML are loaded once at shell
    startup, so QML changes additionally need:
 
    ```
@@ -27,7 +27,7 @@ produced. There's no build step:
    This kills and relaunches the Quickshell bar via Hyprland, correctly
    handling lock-screen state (unlike a raw `pkill quickshell`).
 
-## Live-debugging Panel.qml
+## Live-debugging panel.qml
 
 The plugin runs inside the shared Omarchy Quickshell bar process, not as
 its own inspectable process, so verifying a QML-side fix means watching
@@ -38,7 +38,7 @@ reinstate it if a similar class of bug needs tracing again.
 
 ### Log sources
 
-1. **`hue-api.py` calls** — the script swallows every exception and
+1. **`hue_api.py` calls** — the script swallows every exception and
    always exits 0 (see `main()`'s outer `try/except: pass`), so nothing
    about a failed bridge call is visible unless logged. Add a `_log(msg)`
    helper that appends timestamped lines to
@@ -57,7 +57,7 @@ reinstate it if a similar class of bug needs tracing again.
    and call it around `_dispatch(op)` in `main()` with `start`/`ok`/`FAIL`
    lines (include timing and exception detail on failure).
 
-2. **`Panel.qml`'s state transitions** — add a `dlog(msg)` helper
+2. **`panel.qml`'s state transitions** — add a `dlog(msg)` helper
    (`console.log("[hue-debug] " + msg)`) and place calls at `refresh()`,
    `finishFetch()`, `assembleRooms()`, `queueAction()`/
    `drainActionQueue()`, and the `groupsProc`/`scenesProc`/`actionProc`/

@@ -1,15 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const HueApi = require("../HueApi.js")
-
-test("isValidIp", () => {
-  assert.equal(HueApi.isValidIp("192.168.1.1"), true)
-  assert.equal(HueApi.isValidIp("0.0.0.0"), true)
-  assert.equal(HueApi.isValidIp(""), false)
-  assert.equal(HueApi.isValidIp("192.168.1"), false)
-  assert.equal(HueApi.isValidIp("192.168.1.1.1"), false)
-  assert.equal(HueApi.isValidIp("not.an.ip.addr"), false)
-})
+const HueApi = require("../hue_api.js")
 
 test("isValidId accepts hyphenated Hue usernames", () => {
   assert.equal(HueApi.isValidId("abc-123_XYZ"), true)
@@ -23,25 +14,28 @@ test("isValidId rejects empty, oversized, or invalid-character ids", () => {
   assert.equal(HueApi.isValidId("has/slash"), false)
 })
 
-test("parseConfig accepts a well-formed config", () => {
-  const cfg = HueApi.parseConfig(JSON.stringify({
-    bridgeIp: "192.168.1.50", username: "abc-123", bridgeId: "AABBCC"
-  }))
-  assert.deepEqual(cfg, { bridgeIp: "192.168.1.50", username: "abc-123", bridgeId: "aabbcc" })
+test("parseStatus accepts a well-formed status", () => {
+  const status = HueApi.parseStatus(JSON.stringify({ paired: true, bridgeId: "AABBCC" }))
+  assert.deepEqual(status, { paired: true, bridgeId: "aabbcc" })
 })
 
-test("parseConfig rejects missing or invalid fields", () => {
-  assert.equal(HueApi.parseConfig(""), null)
-  assert.equal(HueApi.parseConfig("not json"), null)
-  assert.equal(HueApi.parseConfig(JSON.stringify({ bridgeIp: "bad", username: "abc" })), null)
-  assert.equal(HueApi.parseConfig(JSON.stringify({ bridgeIp: "1.2.3.4", username: "" })), null)
+test("parseStatus reports unpaired", () => {
+  assert.deepEqual(HueApi.parseStatus(JSON.stringify({ paired: false })), { paired: false, bridgeId: "" })
 })
 
-test("parseConfig drops an invalid bridgeId but keeps the rest", () => {
-  const cfg = HueApi.parseConfig(JSON.stringify({
-    bridgeIp: "1.2.3.4", username: "abc", bridgeId: "has space"
-  }))
-  assert.deepEqual(cfg, { bridgeIp: "1.2.3.4", username: "abc", bridgeId: "" })
+test("parseStatus returns null for malformed input", () => {
+  assert.equal(HueApi.parseStatus(""), null)
+  assert.equal(HueApi.parseStatus("not json"), null)
+})
+
+test("parseStatus drops an invalid bridgeId but keeps paired", () => {
+  const status = HueApi.parseStatus(JSON.stringify({ paired: true, bridgeId: "has space" }))
+  assert.deepEqual(status, { paired: true, bridgeId: "" })
+})
+
+test("parseJsonObject rejects text over the size cap", () => {
+  const huge = JSON.stringify({ a: "x".repeat(300000) })
+  assert.equal(HueApi.parseJsonObject(huge), null)
 })
 
 test("parseGroups keeps only Room/Zone types and sorts by name", () => {
@@ -85,6 +79,28 @@ test("parseGroups passes through the bridge's class field, defaulting to Other",
   assert.equal(byName.Mystery.class, "Other")
 })
 
+test("parseGroups drops entries with a malformed group id", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Fine", type: "Room", lights: ["1"] },
+    "has space": { name: "Bad id", type: "Room", lights: ["1"] }
+  }))
+  assert.deepEqual(groups.map(g => g.id), ["1"])
+})
+
+test("parseGroups drops malformed light ids from a group's lightIds", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Room", type: "Room", lights: ["1", "has space", "2"] }
+  }))
+  assert.deepEqual(groups[0].lightIds, ["1", "2"])
+})
+
+test("parseGroups truncates an overlong name", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "x".repeat(500), type: "Room", lights: ["1"] }
+  }))
+  assert.equal(groups[0].name.length, 200)
+})
+
 test("roomIcon returns a mapped glyph for a known class", () => {
   const bedroomIcon = HueApi.roomIcon("Bedroom")
   const defaultIcon = HueApi.roomIcon("Other")
@@ -115,6 +131,22 @@ test("parseScenes keeps only scenes tied to a group and sorts by name", () => {
 test("parseScenes returns an empty list for empty/malformed input", () => {
   assert.deepEqual(HueApi.parseScenes(""), [])
   assert.deepEqual(HueApi.parseScenes("not json"), [])
+})
+
+test("parseScenes drops entries with a malformed scene or group id", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "Fine", group: "1" },
+    "has space": { name: "Bad scene id", group: "1" },
+    "s2": { name: "Bad group id", group: "not valid" }
+  }))
+  assert.deepEqual(scenes.map(s => s.id), ["s1"])
+})
+
+test("parseScenes truncates an overlong name", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "x".repeat(500), group: "1" }
+  }))
+  assert.equal(scenes[0].name.length, 200)
 })
 
 test("applyOrder sorts items by position in the order list", () => {

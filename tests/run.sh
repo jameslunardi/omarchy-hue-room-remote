@@ -4,12 +4,12 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 status=0
 
-echo "== Python (hue-api.py) =="
+echo "== Python (hue_api.py) =="
 python3 -m unittest tests.test_hue_api -v || status=1
 
 echo
-echo "== JS (HueApi.js) =="
-node --test tests/HueApi.test.js || status=1
+echo "== JS (hue_api.js) =="
+node --test tests/hue_api.test.js || status=1
 
 echo
 echo "== Bash (pair.sh valid_ip) =="

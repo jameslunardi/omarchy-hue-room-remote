@@ -154,7 +154,7 @@ if [[ ! -f "$CACERT" ]]; then
 fi
 
 info "Verifying access..."
-light_count=$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/hue-api.py" verify 2>/dev/null || true)
+light_count=$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/hue_api.py" verify 2>/dev/null || true)
 if [[ -n "$light_count" ]]; then
   ok "Connected. Found $light_count light(s)."
 else

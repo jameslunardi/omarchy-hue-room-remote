@@ -8,6 +8,7 @@ import re
 import socket
 import ssl
 import sys
+import tempfile
 import urllib.request
 
 CREDS_FILE = os.path.join(
@@ -16,7 +17,21 @@ CACERT = os.path.join(
     os.path.expanduser("~"),
     ".config/omarchy/plugins/lunardi0x01.hue-room-remote/hue_bridge_cacert.pem")
 
+MAX_CREDS_BYTES = 4096
+MAX_RESPONSE_BYTES = 1024 * 1024
+
 _opener = None
+_no_redirect_opener = None
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuses to follow redirects on credential-bearing requests -- a
+    compromised bridge could otherwise 302 an authenticated request (with
+    the username embedded in the URL path) to an attacker-controlled
+    host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _get_opener():
@@ -25,8 +40,15 @@ def _get_opener():
         ctx = ssl.create_default_context(cafile=CACERT)
         ctx.check_hostname = True
         _opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=ctx))
+            urllib.request.HTTPSHandler(context=ctx), _NoRedirectHandler())
     return _opener
+
+
+def _get_no_redirect_opener():
+    global _no_redirect_opener
+    if _no_redirect_opener is None:
+        _no_redirect_opener = urllib.request.build_opener(_NoRedirectHandler())
+    return _no_redirect_opener
 
 
 class _BridgeResolver:
@@ -50,8 +72,14 @@ class _BridgeResolver:
 
 
 def _load_creds():
-    with open(CREDS_FILE) as f:
-        return json.load(f)
+    fd = os.open(CREDS_FILE, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd) as f:
+        if os.fstat(fd).st_uid != os.getuid():
+            raise ValueError("credentials file not owned by current user")
+        data = f.read(MAX_CREDS_BYTES + 1)
+    if len(data) > MAX_CREDS_BYTES:
+        raise ValueError("credentials file too large")
+    return json.loads(data)
 
 
 def _bridge_url(creds, path):
@@ -65,25 +93,23 @@ def _bridge_url(creds, path):
             None, bridge_ip)
 
 
-def _request(req_or_url, creds):
-    if isinstance(req_or_url, str):
-        url, hostname, ip = _bridge_url(creds, req_or_url)
-        req = urllib.request.Request(url)
-    else:
-        url = req_or_url.full_url
-        hostname, ip = None, None
-        for c in creds, None:
-            if c:
-                _, hostname, ip = _bridge_url(c, "")
-                break
-    if hostname and ip:
-        opener = _get_opener()
+def _read_json_capped(resp, max_bytes=MAX_RESPONSE_BYTES):
+    data = resp.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError("response too large")
+    return json.loads(data)
+
+
+def _request(path, creds):
+    url, hostname, ip = _bridge_url(creds, path)
+    req = urllib.request.Request(url)
+    if hostname:
         with _BridgeResolver(hostname, ip):
-            with opener.open(req, timeout=5) as r:
-                return json.load(r)
+            with _get_opener().open(req, timeout=5) as r:
+                return _read_json_capped(r)
     else:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return json.load(r)
+        with _get_no_redirect_opener().open(req, timeout=5) as r:
+            return _read_json_capped(r)
 
 
 def _put(creds, path, body):
@@ -91,14 +117,16 @@ def _put(creds, path, body):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"}, method="PUT")
-    if hostname and ip:
-        opener = _get_opener()
+    if hostname:
         with _BridgeResolver(hostname, ip):
-            with opener.open(req, timeout=5) as r:
-                r.read()
+            with _get_opener().open(req, timeout=5) as r:
+                r.read(MAX_RESPONSE_BYTES)
     else:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            r.read()
+        with _get_no_redirect_opener().open(req, timeout=5) as r:
+            r.read(MAX_RESPONSE_BYTES)
+
+
+_ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
 
 
 def main():
@@ -107,12 +135,27 @@ def main():
     _dispatch(sys.argv[1])
 
 
+def _get_status():
+    try:
+        creds = _load_creds()
+    except Exception:
+        print(json.dumps({"paired": False}))
+        return
+    bridge_id = str(creds.get("bridgeId", "")).strip().lower()
+    if not _ID_RE.fullmatch(bridge_id):
+        bridge_id = ""
+    print(json.dumps({"paired": True, "bridgeId": bridge_id}))
+
+
 def _dispatch(op):
     if op == "write-favorite" and len(sys.argv) >= 4:
         _write_favorite(sys.argv[3])
         return
     if op == "write-order" and len(sys.argv) >= 4:
         _write_order(sys.argv[3])
+        return
+    if op == "get-status":
+        _get_status()
         return
 
     creds = _load_creds()
@@ -140,25 +183,30 @@ def _dispatch(op):
         print(len(lights))
 
 
-_ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
-
-
 def _atomic_write(path, payload):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    dir_fd = os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
+        if os.fstat(dir_fd).st_uid != os.getuid():
+            raise OSError("settings directory not owned by current user")
+        fd, tmp_path = tempfile.mkstemp(dir=directory)
+        tmp_name = os.path.basename(tmp_path)
         try:
-            fd = os.open(path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
-            os.fchmod(fd, 0o600)
-        except (OSError, ValueError):
+            with os.fdopen(fd, 'w') as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, os.path.basename(path),
+                       src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        except BaseException:
             try:
-                os.remove(path)
+                os.unlink(tmp_name, dir_fd=dir_fd)
             except OSError:
                 pass
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write(payload)
+            raise
+    finally:
+        os.close(dir_fd)
 
 
 def _write_favorite(body_json):

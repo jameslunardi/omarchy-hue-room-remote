@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "HueApi.js" as HueApi
+import "hue_api.js" as HueApi
 
 Panel {
   id: root
@@ -14,7 +14,8 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
 
-  property var config: null
+  property bool paired: false
+  property string bridgeId: ""
   property var visibleRooms: []
   property var scenes: []
   property string favoriteRoomId: ""
@@ -32,7 +33,7 @@ Panel {
 
   readonly property var activeRoom: root.findRoom(root.activeRoomId)
   readonly property int roomCount: root.visibleRooms.length
-  readonly property bool insecureMode: root.config !== null && !root.config.bridgeId
+  readonly property bool insecureMode: root.paired && !root.bridgeId
   readonly property var orderedRooms: HueApi.applyOrder(root.visibleRooms, root.roomOrder)
   readonly property var orderedScenesForActiveRoom: HueApi.applyOrder(
     root.scenes.filter(function(s) { return s.group === root.activeRoomId }),
@@ -44,7 +45,7 @@ Panel {
     : root.orderedRooms.filter(function(r) { return root.hiddenRoomIds.indexOf(r.id) === -1 })
 
   readonly property string statusText: {
-    if (root.config === null) return "Not paired"
+    if (!root.paired) return "Not paired"
     if (root.lastFetchFailed) return "Bridge unreachable"
     if (root.loading) return "Loading…"
     return ""
@@ -80,7 +81,7 @@ Panel {
   // this does a one-off get-lights fetch scoped to whichever room is being
   // looked at, rather than pulling all lights on every poll cycle.
   function refreshRoomBrightness(roomId) {
-    if (!root.config || roomLightsProc.running) return
+    if (!root.paired || roomLightsProc.running) return
     roomLightsProc.forRoomId = roomId
     roomLightsProc.command = HueApi.apiCmd(["get-lights"])
     roomLightsProc.running = true
@@ -107,8 +108,8 @@ Panel {
   }
 
   function refresh() {
-    if (!root.config) {
-      configFile.reload()
+    if (!root.paired) {
+      root.checkStatus()
       return
     }
     if (actionProc.running || root.actionQueue.length > 0) {
@@ -125,7 +126,7 @@ Panel {
   }
 
   function startFetches() {
-    if (!root.config) return
+    if (!root.paired) return
     root.pendingFetches = 2
     groupsProc.command = HueApi.apiCmd(["get-groups"])
     scenesProc.command = HueApi.apiCmd(["get-scenes"])
@@ -159,7 +160,7 @@ Panel {
   }
 
   function toggleRoom(roomId, on) {
-    if (!root.config) return
+    if (!root.paired) return
     root.patchRoom(roomId, { on: on })
     if (on && root.lastSceneByRoom[roomId]) {
       // Applying the scene both turns the lights on and restores the look,
@@ -174,7 +175,7 @@ Panel {
   }
 
   function setRoomBrightness(roomId, bri) {
-    if (!root.config) return
+    if (!root.paired) return
     var clamped = Math.max(1, Math.min(254, Math.round(bri)))
     root.patchRoom(roomId, { bri: clamped })
     root.queueAction("put-group", roomId, { bri: clamped })
@@ -182,7 +183,7 @@ Panel {
   }
 
   function applyScene(roomId, sceneId) {
-    if (!root.config) return
+    if (!root.paired) return
     var lastScene = {}
     for (var k in root.lastSceneByRoom) lastScene[k] = root.lastSceneByRoom[k]
     lastScene[roomId] = sceneId
@@ -269,20 +270,16 @@ Panel {
     resyncTimer.restart()
   }
 
-  property FileView configFile: FileView {
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/hue.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: {
-      root.config = HueApi.parseConfig(text())
-      if (root.config) {
-        root.config.username = ""
-        root.refresh()
-      }
-    }
-    onLoadFailed: root.config = null
+  // Pairing status is fetched through hue_api.py's `get-status` op rather
+  // than reading hue.json directly, so the real username never has to
+  // exist as a QML/JS string in this process at all -- only a non-secret
+  // {paired, bridgeId} snapshot ever crosses into QML.
+  function checkStatus() {
+    if (statusProc.running) return
+    statusProc.running = true
   }
+
+  Component.onCompleted: root.checkStatus()
 
   property FileView favoriteFile: FileView {
     path: Quickshell.env("HOME") + "/.config/omarchy/settings/hue-favorite.json"
@@ -330,14 +327,14 @@ Panel {
   Timer {
     interval: 1500
     running: true
-    onTriggered: configFile.reload()
+    onTriggered: root.checkStatus()
   }
 
   Timer {
     interval: 5000
     repeat: true
-    running: root.config === null
-    onTriggered: configFile.reload()
+    running: !root.paired
+    onTriggered: root.checkStatus()
   }
 
   Timer {
@@ -349,7 +346,7 @@ Panel {
   Timer {
     interval: 15000
     repeat: true
-    running: root.config !== null
+    running: root.paired
     onTriggered: root.refresh()
   }
 
@@ -358,6 +355,27 @@ Panel {
     property string roomId: ""
     interval: 900
     onTriggered: root.refreshRoomBrightness(roomId)
+  }
+
+  Process {
+    id: statusProc
+    command: HueApi.apiCmd(["get-status"])
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var status = HueApi.parseStatus(text)
+        var wasPaired = root.paired
+        root.paired = !!(status && status.paired)
+        root.bridgeId = (status && status.bridgeId) || ""
+        if (root.paired && !wasPaired) root.refresh()
+      }
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.paired = false
+        root.bridgeId = ""
+      }
+    }
   }
 
   Process {
@@ -491,6 +509,7 @@ Panel {
                 Text {
                   visible: root.statusText.length > 0
                   text: root.statusText
+                  textFormat: Text.PlainText
                   color: Qt.darker(root.bar.foreground, 1.4)
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.caption
@@ -518,7 +537,7 @@ Panel {
           }
 
           Column {
-            visible: root.config === null
+            visible: !root.paired
             width: parent.width
             spacing: Style.space(4)
 
@@ -570,7 +589,7 @@ Panel {
           }
 
           Row {
-            visible: root.config !== null && root.loading && root.visibleRooms.length === 0
+            visible: root.paired && root.loading && root.visibleRooms.length === 0
             spacing: Style.space(4)
 
             Text {
@@ -597,7 +616,7 @@ Panel {
           }
 
           Text {
-            visible: root.config !== null && root.lastFetchFailed && !root.loading
+            visible: root.paired && root.lastFetchFailed && !root.loading
             width: parent.width
             text: "Couldn't reach the bridge. Check the bridge is on and the IP is still valid, then re-run pair.sh."
             color: Color.urgent
@@ -619,7 +638,7 @@ Panel {
           // ---- Room List view ------------------------------------------------
 
           Column {
-            visible: root.config !== null && root.activeView === "list"
+            visible: root.paired && root.activeView === "list"
             width: parent.width
             spacing: Style.space(6)
 
@@ -671,6 +690,7 @@ Panel {
 
                   Text {
                     text: roomRow.modelData.name
+                    textFormat: Text.PlainText
                     color: root.bar.foreground
                     font.family: root.bar.fontFamily
                     font.pixelSize: Style.font.body
@@ -742,7 +762,7 @@ Panel {
             }
 
             Text {
-              visible: root.config !== null && !root.loading && !root.lastFetchFailed && root.roomCount === 0
+              visible: root.paired && !root.loading && !root.lastFetchFailed && root.roomCount === 0
               text: "No rooms with lights found."
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
@@ -750,7 +770,7 @@ Panel {
             }
 
             Text {
-              visible: root.config !== null && !root.loading && !root.lastFetchFailed
+              visible: root.paired && !root.loading && !root.lastFetchFailed
                 && root.roomCount > 0 && root.displayedRooms.length === 0
               text: "All rooms are hidden. Tap ⚙ to manage."
               color: Qt.darker(root.bar.foreground, 1.4)
@@ -765,7 +785,7 @@ Panel {
             id: roomLoader
             width: parent.width
             height: item ? item.implicitHeight : 0
-            active: root.config !== null && root.activeView === "room" && root.activeRoom !== null
+            active: root.paired && root.activeView === "room" && root.activeRoom !== null
             sourceComponent: roomViewComponent
           }
         }
@@ -890,6 +910,7 @@ Panel {
               anchors.leftMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
               text: sceneRow.modelData.name
+              textFormat: Text.PlainText
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.body
