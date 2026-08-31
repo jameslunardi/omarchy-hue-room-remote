@@ -632,7 +632,7 @@ Panel {
           Text {
             visible: root.insecureMode
             width: parent.width
-            text: "TLS verification disabled. Re-run pair.sh to secure the connection."
+            text: "Bridge identity not verified — re-run pair.sh to confirm you're talking to your own bridge."
             color: Color.urgent
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption

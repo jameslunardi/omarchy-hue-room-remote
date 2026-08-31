@@ -89,4 +89,20 @@ else
   fail=1
 fi
 
+# A FIFO planted at the target path must not hang secure_remove (H-01):
+# os.O_WRONLY without O_NONBLOCK blocks until a reader opens the same
+# path, which never happens here. timeout catches a regression as a
+# non-zero/124 exit rather than an actual indefinite hang.
+fifo="$TMP_DIR/fifo.txt"
+mkfifo "$fifo"
+if timeout 3 bash -c '
+  eval "$(sed -n "/^secure_remove()/,/^}/p" "$1")"
+  secure_remove "$2"
+' _ "$CLEANUP_SH" "$fifo"; then
+  echo "ok   secure_remove did not hang on a FIFO"
+else
+  echo "FAIL secure_remove hung (or errored) on a FIFO"
+  fail=1
+fi
+
 exit $fail

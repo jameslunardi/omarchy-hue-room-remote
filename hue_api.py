@@ -3,6 +3,7 @@
 the username in process arguments."""
 
 import contextlib
+import fcntl
 import json
 import os
 import re
@@ -128,11 +129,14 @@ def _load_creds():
     return _read_local_json_capped(CREDS_FILE, MAX_CREDS_BYTES)
 
 
+_BRIDGE_ID_RE = re.compile(r'[0-9a-f]{16}')
+
+
 def _bridge_url(creds, path):
     bridge_id = creds.get("bridgeId", "").strip().lower()
     bridge_ip = creds["bridgeIp"]
     username = creds["username"]
-    if bridge_id:
+    if bridge_id and _BRIDGE_ID_RE.fullmatch(bridge_id):
         return ("https://%s/api/%s%s" % (bridge_id, username, path),
                 bridge_id, bridge_ip)
     return ("https://%s/api/%s%s" % (bridge_ip, username, path),
@@ -313,18 +317,31 @@ def _write_order(body_json):
         return
 
     config_path = os.path.join(CONFIG_HOME, "omarchy/settings/hue-order.json")
+    # Two bar instances (one per monitor) can each issue a write-order call
+    # around the same time. _atomic_write makes the write itself atomic, but
+    # without a lock spanning the read-modify-write, the second writer's
+    # stale read could overwrite the first writer's update. Advisory-lock
+    # a sibling file so both instances' calls serialize against each other.
+    lock_path = config_path + ".lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
-        if not isinstance(cfg, dict):
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
+            if not isinstance(cfg, dict):
+                cfg = {}
+        except Exception:
             cfg = {}
-    except Exception:
-        cfg = {}
 
-    for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
-        if key in body:
-            cfg[key] = body[key]
+        for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
+            if key in body:
+                cfg[key] = body[key]
 
-    _atomic_write(config_path, json.dumps(cfg, indent=2) + "\n")
+        _atomic_write(config_path, json.dumps(cfg, indent=2) + "\n")
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 if __name__ == "__main__":

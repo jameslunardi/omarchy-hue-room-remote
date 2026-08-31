@@ -91,7 +91,7 @@ shred_file() {
 import os, stat, sys
 path = sys.argv[1]
 try:
-    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         st = os.fstat(fd)
         if stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid() and st.st_size > 0:

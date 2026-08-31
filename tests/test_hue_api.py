@@ -7,6 +7,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 from unittest import mock
@@ -182,6 +183,40 @@ class WriteOrderTests(unittest.TestCase):
         hue_api._write_order(json.dumps({"hiddenRooms": ["has space"]}))
         self.assertFalse(os.path.exists(self.order_path()))
 
+    def test_locks_read_modify_write_against_concurrent_writer(self):
+        # Two bar instances (one per monitor) can each call _write_order at
+        # roughly the same time. Without a lock spanning the read-modify-write,
+        # whichever call's _atomic_write finishes last wins outright and the
+        # other call's key is silently lost. os.open() gives each call its own
+        # open file description even within one process, so a real fcntl.flock
+        # genuinely serializes these two threads exactly as it would two
+        # separate processes.
+        os.makedirs(os.path.dirname(self.order_path()))
+        with open(self.order_path(), "w") as f:
+            json.dump({}, f)
+
+        real_atomic_write = hue_api._atomic_write
+
+        def slow_atomic_write(path, payload):
+            time.sleep(0.15)
+            real_atomic_write(path, payload)
+
+        def run(body):
+            hue_api._write_order(json.dumps(body))
+
+        with mock.patch.object(hue_api, "_atomic_write", side_effect=slow_atomic_write):
+            t1 = threading.Thread(target=run, args=({"roomOrder": ["2", "1"]},))
+            t2 = threading.Thread(target=run, args=({"hiddenRooms": ["3"]},))
+            t1.start()
+            time.sleep(0.02)  # give t1 the lock first
+            t2.start()
+            t1.join()
+            t2.join()
+
+        with open(self.order_path()) as f:
+            saved = json.load(f)
+        self.assertEqual(saved, {"roomOrder": ["2", "1"], "hiddenRooms": ["3"]})
+
 
 class XdgHomeTests(unittest.TestCase):
     def test_state_home_uses_xdg_var_when_set(self):
@@ -253,6 +288,38 @@ class LoadCredsTests(unittest.TestCase):
             f.write("x" * (hue_api.MAX_CREDS_BYTES + 1))
         with self.assertRaises(ValueError):
             hue_api._load_creds()
+
+
+class BridgeUrlTests(unittest.TestCase):
+    def creds(self, bridge_id):
+        return {"bridgeId": bridge_id, "bridgeIp": "1.2.3.4", "username": "u"}
+
+    def test_uses_bridge_id_when_valid(self):
+        url, hostname, ip = hue_api._bridge_url(self.creds("aabbccdd11223344"), "/lights")
+        self.assertEqual(url, "https://aabbccdd11223344/api/u/lights")
+        self.assertEqual(hostname, "aabbccdd11223344")
+        self.assertEqual(ip, "1.2.3.4")
+
+    def test_falls_back_to_ip_when_bridge_id_empty(self):
+        url, hostname, ip = hue_api._bridge_url(self.creds(""), "/lights")
+        self.assertEqual(url, "https://1.2.3.4/api/u/lights")
+        self.assertIsNone(hostname)
+
+    def test_falls_back_to_ip_when_bridge_id_wrong_length(self):
+        url, hostname, ip = hue_api._bridge_url(self.creds("aabb"), "/lights")
+        self.assertEqual(url, "https://1.2.3.4/api/u/lights")
+        self.assertIsNone(hostname)
+
+    def test_falls_back_to_ip_when_bridge_id_not_hex(self):
+        url, hostname, ip = hue_api._bridge_url(
+            self.creds("gggggggggggggggg"), "/lights")
+        self.assertEqual(url, "https://1.2.3.4/api/u/lights")
+        self.assertIsNone(hostname)
+
+    def test_bridge_id_is_case_insensitive(self):
+        url, hostname, ip = hue_api._bridge_url(self.creds("AABBCCDD11223344"), "/lights")
+        self.assertEqual(url, "https://aabbccdd11223344/api/u/lights")
+        self.assertEqual(hostname, "aabbccdd11223344")
 
 
 class ReadLocalJsonCappedTests(unittest.TestCase):

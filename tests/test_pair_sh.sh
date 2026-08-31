@@ -63,4 +63,20 @@ else
   fail=1
 fi
 
+# A FIFO planted at the target path must not hang shred_file (H-01):
+# os.O_WRONLY without O_NONBLOCK blocks until a reader opens the same
+# path, which never happens here. timeout catches a regression as a
+# non-zero/124 exit rather than an actual indefinite hang.
+fifo="$TMP_DIR/fifo.json"
+mkfifo "$fifo"
+if timeout 3 bash -c '
+  eval "$(sed -n "/^shred_file()/,/^}/p" "$1")"
+  shred_file "$2"
+' _ "$PAIR_SH" "$fifo"; then
+  echo "ok   shred_file did not hang on a FIFO"
+else
+  echo "FAIL shred_file hung (or errored) on a FIFO"
+  fail=1
+fi
+
 exit $fail

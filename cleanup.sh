@@ -19,7 +19,7 @@ secure_remove() {
 import os, stat, sys
 path = sys.argv[1]
 try:
-    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
 except OSError:
     sys.exit(0)  # symlink, or otherwise not safely writable in place
 try:
