@@ -8,6 +8,9 @@ removed=0
 secure_remove() {
   local f="$1"
   [[ -e "$f" || -L "$f" ]] || return 0
+  if [[ -d "$f" && ! -L "$f" ]]; then
+    return 0  # a real directory at this path isn't ours to remove
+  fi
   # One open (O_NOFOLLOW) and everything else checked against that same
   # descriptor -- not a path-based -L/-f test followed by a separate
   # lstat()+open() pair, which leaves a window for the path to be swapped

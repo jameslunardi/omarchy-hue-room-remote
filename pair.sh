@@ -5,6 +5,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
 CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/hue_bridge_cacert.pem"
 MAX_RESPONSE_BYTES=65536
+MAX_CREDS_BYTES=4096
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
 DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
 
@@ -104,7 +105,26 @@ except Exception:
   printf '%s\n' "$username"
 }
 
-if [[ -f "$STATE_FILE" ]] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('bridgeIp') else 1)" "$STATE_FILE" 2>/dev/null; then
+if [[ -f "$STATE_FILE" ]] && MAX_BYTES="$MAX_CREDS_BYTES" python3 -c "
+import json, os, stat, sys
+path = sys.argv[1]
+max_bytes = int(os.environ['MAX_BYTES'])
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid():
+            sys.exit(1)
+        data = os.read(fd, max_bytes + 1)
+    finally:
+        os.close(fd)
+    if len(data) > max_bytes:
+        sys.exit(1)
+    d = json.loads(data)
+    sys.exit(0 if d.get('bridgeIp') else 1)
+except Exception:
+    sys.exit(1)
+" "$STATE_FILE" 2>/dev/null; then
   info "Existing config found at $STATE_FILE."
   info "Re-pairing will replace the current username. The old username will stop working."
 fi

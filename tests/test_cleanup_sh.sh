@@ -64,4 +64,29 @@ else
   fail=1
 fi
 
+# A real directory at the target path is left alone rather than crashing
+# the caller -- cleanup.sh runs under `set -euo pipefail`, and `rm -f` on a
+# directory still exits non-zero despite -f, which previously aborted the
+# whole script instead of the no-op the original (pre-refactor) behavior
+# gave. Run this one in a fresh `set -e` subshell so it actually exercises
+# that failure mode instead of just this test file's own laxer options.
+dir_target="$TMP_DIR/a-directory"
+mkdir -p "$dir_target"
+if bash -c '
+  set -euo pipefail
+  eval "$(sed -n "/^secure_remove()/,/^}/p" "$1")"
+  secure_remove "$2"
+' _ "$CLEANUP_SH" "$dir_target"; then
+  echo "ok   secure_remove does not abort the caller on a real directory"
+else
+  echo "FAIL secure_remove crashed the caller (set -e) on a real directory"
+  fail=1
+fi
+if [[ -d "$dir_target" ]]; then
+  echo "ok   secure_remove left the directory in place"
+else
+  echo "FAIL secure_remove should not have touched the directory"
+  fail=1
+fi
+
 exit $fail
