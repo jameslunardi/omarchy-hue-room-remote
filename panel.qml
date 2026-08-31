@@ -564,7 +564,7 @@ Panel {
 
             Text {
               width: parent.width
-              text: "Press the link button on your Hue bridge, then click below."
+              text: "Click below to start pairing — you'll be prompted to press the bridge's link button next."
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.caption
