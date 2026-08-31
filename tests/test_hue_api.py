@@ -318,6 +318,18 @@ class AtomicWriteTests(unittest.TestCase):
         hue_api._atomic_write(target, "{}\n")
         self.assertEqual(stat.S_IMODE(os.stat(directory).st_mode), 0o700)
 
+    def test_does_not_chmod_through_a_symlinked_settings_directory(self):
+        real_dir = os.path.join(self.tmp.name, "attacker_owned")
+        os.makedirs(real_dir, mode=0o755)
+        settings_dir = os.path.join(self.tmp.name, "settings")
+        os.symlink(real_dir, settings_dir)
+        target = os.path.join(settings_dir, "hue-favorite.json")
+
+        with self.assertRaises(OSError):
+            hue_api._atomic_write(target, "{}\n")
+
+        self.assertEqual(stat.S_IMODE(os.stat(real_dir).st_mode), 0o755)
+
 
 class GetStatusTests(unittest.TestCase):
     def test_prints_paired_with_bridge_id_when_creds_exist(self):

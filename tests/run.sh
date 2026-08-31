@@ -15,4 +15,8 @@ echo
 echo "== Bash (pair.sh valid_ip) =="
 bash tests/test_pair_sh.sh || status=1
 
+echo
+echo "== Bash (cleanup.sh secure_remove) =="
+bash tests/test_cleanup_sh.sh || status=1
+
 exit $status

@@ -4,6 +4,7 @@ set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
 CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/hue_bridge_cacert.pem"
+MAX_RESPONSE_BYTES=65536
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
 DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
 
@@ -25,13 +26,16 @@ valid_ip() {
 
 discover_bridge() {
   local response ip
-  response=$(curl -fsS --max-time 5 https://discovery.meethue.com/ 2>/dev/null || true)
+  response=$(curl -fsS --max-time 5 https://discovery.meethue.com/ 2>/dev/null | head -c "$MAX_RESPONSE_BYTES" || true)
   [[ -z "$response" ]] && return 1
   ip=$(python3 -c "
 import json, sys
-d = json.load(sys.stdin)
-ips = [x.get('internalipaddress', '') for x in d if x.get('internalipaddress')]
-print(ips[0] if ips else '')
+try:
+    d = json.load(sys.stdin)
+    ips = [x.get('internalipaddress', '') for x in d if isinstance(x, dict) and x.get('internalipaddress')]
+    print(ips[0] if ips else '')
+except Exception:
+    pass
 " <<<"$response")
   [[ -n "$ip" ]] || return 1
   printf '%s\n' "$ip"
@@ -39,15 +43,19 @@ print(ips[0] if ips else '')
 
 fetch_bridge_id() {
   local ip="$1" bridge_id
-  bridge_id=$(CACERT="$CACERT" TARGET_IP="$ip" python3 - <<'PY' 2>/dev/null || true
+  bridge_id=$(CACERT="$CACERT" TARGET_IP="$ip" MAX_BYTES="$MAX_RESPONSE_BYTES" python3 - <<'PY' 2>/dev/null || true
 import json, os, ssl, sys, urllib.request
 cacert = os.environ["CACERT"]
 target = os.environ["TARGET_IP"]
+max_bytes = int(os.environ["MAX_BYTES"])
 ctx = ssl.create_default_context(cafile=cacert)
 ctx.check_hostname = False
 try:
     with urllib.request.urlopen("https://%s/api/config" % target, timeout=5, context=ctx) as r:
-        d = json.load(r)
+        raw = r.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            raise ValueError("response too large")
+        d = json.loads(raw)
         bid = d.get("bridgeid", "")
         bid = bid.lower() if bid else ""
         if all(c in "0123456789abcdef" for c in bid) and len(bid) == 16:
@@ -64,11 +72,12 @@ write_state() {
   printf '%s\n%s\n%s\n' "$bridge_ip" "$bridge_id" "$username" | python3 -c "
 import json, os, sys
 bridge_ip, bridge_id, username = sys.stdin.read().splitlines()[:3]
-fd = os.open('''$STATE_FILE''', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+state_file = sys.argv[1]
+fd = os.open(state_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
     json.dump({'bridgeIp': bridge_ip, 'bridgeId': bridge_id, 'username': username}, f, indent=2)
     f.write('\n')
-"
+" "$STATE_FILE"
 }
 
 pair() {
@@ -76,7 +85,7 @@ pair() {
   response=$(curl -fsS --max-time 8 --cacert "$CACERT" \
     --resolve "${bridge_id}:443:${ip}" \
     -X POST -H "Content-Type: application/json" \
-    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://${bridge_id}/api" 2>/dev/null || true)
+    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://${bridge_id}/api" 2>/dev/null | head -c "$MAX_RESPONSE_BYTES" || true)
   username=$(python3 -c "
 import json, sys
 try:
@@ -141,6 +150,10 @@ if [[ -z "$username" ]]; then
 fi
 ok "Got username: ${username:0:4}***"
 
+if [[ -L "$STATE_DIR" ]]; then
+  err "$STATE_DIR is a symlink; refusing to use it."
+  exit 1
+fi
 mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 write_state "$local_ip" "$bridge_id" "$username" 2>/dev/null || {
   rm -f "$STATE_FILE" 2>/dev/null

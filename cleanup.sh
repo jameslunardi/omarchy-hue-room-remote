@@ -7,27 +7,26 @@ removed=0
 
 secure_remove() {
   local f="$1"
-  [[ -f "$f" ]] || return 0
-  if [[ -L "$f" ]]; then
-    rm "$f"
-    return 0
-  fi
-  local owner
-  owner=$(stat -c '%U' "$f" 2>/dev/null || true)
-  if [[ "$owner" == "$USER" ]]; then
-    python3 -c "
-import os, stat
+  [[ -e "$f" || -L "$f" ]] || return 0
+  # One open (O_NOFOLLOW) and everything else checked against that same
+  # descriptor -- not a path-based -L/-f test followed by a separate
+  # lstat()+open() pair, which leaves a window for the path to be swapped
+  # between checks.
+  python3 -c "
+import os, stat, sys
+path = sys.argv[1]
 try:
-    st = os.lstat('''$f''')
-    if stat.S_ISREG(st.st_mode) and st.st_size > 0:
-        fd = os.open('''$f''', os.O_WRONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(0)  # symlink, or otherwise not safely writable in place
+try:
+    st = os.fstat(fd)
+    if stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid() and st.st_size > 0:
         os.write(fd, b'\x00' * st.st_size)
-        os.close(fd)
-except Exception:
-    pass
-" 2>/dev/null || true
-  fi
-  rm "$f"
+finally:
+    os.close(fd)
+" "$f" 2>/dev/null || true
+  rm -f "$f"
 }
 
 if [[ -f "$STATE_FILE" ]]; then

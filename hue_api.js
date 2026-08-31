@@ -20,6 +20,16 @@ var MAX_JSON_TEXT_LENGTH = 262144
 var MAX_PARSED_ITEMS = 500
 var MAX_NAME_LENGTH = 200
 
+// Room/scene names render through QML Text elements we don't all control
+// directly -- some flow into shell-provided components (e.g. Toggle.label)
+// whose internal Text has no textFormat override and defaults to
+// Text.AutoText, which would interpret markup-like content as rich text.
+// Stripping angle brackets at the source means it's inert wherever it's
+// rendered, not just in the Text elements we happen to have hardened.
+function sanitizeName(name) {
+  return String(name).replace(/[<>]/g, "").slice(0, MAX_NAME_LENGTH)
+}
+
 function parseStatus(text) {
   var obj = parseJsonObject(text)
   if (!obj) return null
@@ -59,9 +69,9 @@ function parseGroups(text) {
       : []
     groups.push({
       id: String(id),
-      name: String(group.name || "Group " + id).slice(0, MAX_NAME_LENGTH),
+      name: sanitizeName(group.name || "Group " + id),
       type: type,
-      class: String(group.class || "Other"),
+      class: String(group.class || "Other").slice(0, MAX_NAME_LENGTH),
       on: !!(group.state && group.state.any_on),
       allOn: !!(group.state && group.state.all_on),
       bri: Math.max(1, Math.min(254, bri)),
@@ -87,7 +97,7 @@ function parseScenes(text) {
     if (!group || !isValidId(group)) continue
     scenes.push({
       id: String(id),
-      name: String(scene.name || "Scene " + id).slice(0, MAX_NAME_LENGTH),
+      name: sanitizeName(scene.name || "Scene " + id),
       group: group
     })
   }

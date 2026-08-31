@@ -2,6 +2,7 @@
 """Hue bridge API helper — reads credentials from file, never exposes
 the username in process arguments."""
 
+import contextlib
 import json
 import os
 import re
@@ -114,16 +115,22 @@ def _read_json_capped(resp, max_bytes=MAX_RESPONSE_BYTES):
     return json.loads(data)
 
 
-def _request(path, creds):
-    url, hostname, ip = _bridge_url(creds, path)
-    req = urllib.request.Request(url)
+@contextlib.contextmanager
+def _open_bridge_request(req, hostname, ip):
     if hostname:
         with _BridgeResolver(hostname, ip):
             with _get_opener().open(req, timeout=5) as r:
-                return _read_json_capped(r)
+                yield r
     else:
         with _get_no_redirect_opener().open(req, timeout=5) as r:
-            return _read_json_capped(r)
+            yield r
+
+
+def _request(path, creds):
+    url, hostname, ip = _bridge_url(creds, path)
+    req = urllib.request.Request(url)
+    with _open_bridge_request(req, hostname, ip) as r:
+        return _read_json_capped(r)
 
 
 def _put(creds, path, body):
@@ -131,13 +138,8 @@ def _put(creds, path, body):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"}, method="PUT")
-    if hostname:
-        with _BridgeResolver(hostname, ip):
-            with _get_opener().open(req, timeout=5) as r:
-                r.read(MAX_RESPONSE_BYTES)
-    else:
-        with _get_no_redirect_opener().open(req, timeout=5) as r:
-            r.read(MAX_RESPONSE_BYTES)
+    with _open_bridge_request(req, hostname, ip) as r:
+        r.read(MAX_RESPONSE_BYTES)
 
 
 _ID_RE = re.compile(r'[a-zA-Z0-9_-]{1,40}')
@@ -200,11 +202,15 @@ def _dispatch(op):
 def _atomic_write(path, payload):
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
-    os.chmod(directory, 0o700)
     dir_fd = os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         if os.fstat(dir_fd).st_uid != os.getuid():
             raise OSError("settings directory not owned by current user")
+        # chmod via the already-validated descriptor (fchmod), not the path --
+        # os.chmod(path, ...) follows symlinks by default, which would have
+        # silently relocked whatever an attacker-planted symlink pointed at
+        # before O_NOFOLLOW ever got a chance to reject it.
+        os.chmod(dir_fd, 0o700)
         fd, tmp_path = tempfile.mkstemp(dir=directory)
         tmp_name = os.path.basename(tmp_path)
         try:

@@ -101,6 +101,15 @@ test("parseGroups truncates an overlong name", () => {
   assert.equal(groups[0].name.length, 200)
 })
 
+test("parseGroups strips angle brackets from names so they can't render as markup downstream", () => {
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "<b>Evil</b> Room", type: "Room", lights: ["1"] }
+  }))
+  assert.equal(groups[0].name, "bEvil/b Room")
+  assert.ok(!groups[0].name.includes("<"))
+  assert.ok(!groups[0].name.includes(">"))
+})
+
 test("roomIcon returns a mapped glyph for a known class", () => {
   const bedroomIcon = HueApi.roomIcon("Bedroom")
   const defaultIcon = HueApi.roomIcon("Other")
@@ -147,6 +156,13 @@ test("parseScenes truncates an overlong name", () => {
     "s1": { name: "x".repeat(500), group: "1" }
   }))
   assert.equal(scenes[0].name.length, 200)
+})
+
+test("parseScenes strips angle brackets from names so they can't render as markup downstream", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "<script>bad</script>", group: "1" }
+  }))
+  assert.equal(scenes[0].name, "scriptbad/script")
 })
 
 test("applyOrder sorts items by position in the order list", () => {
