@@ -34,8 +34,10 @@ finally:
 
 if [[ -f "$STATE_FILE" ]]; then
   secure_remove "$STATE_FILE"
-  echo "Removed $STATE_FILE"
-  removed=$((removed + 1))
+  if [[ ! -e "$STATE_FILE" && ! -L "$STATE_FILE" ]]; then
+    echo "Removed $STATE_FILE"
+    removed=$((removed + 1))
+  fi
 fi
 
 if [[ $removed -eq 0 ]]; then

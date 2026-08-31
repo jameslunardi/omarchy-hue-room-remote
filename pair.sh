@@ -4,7 +4,7 @@ set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"
 STATE_FILE="$STATE_DIR/hue.json"
 CACERT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/hue_bridge_cacert.pem"
-MAX_RESPONSE_BYTES=65536
+MAX_BOOTSTRAP_RESPONSE_BYTES=65536
 MAX_CREDS_BYTES=4096
 DEVICETYPE="${PHILIPS_HUE_DEVICETYPE:-philips#omarchy-hue}"
 DEVICETYPE="${DEVICETYPE//[^a-zA-Z0-9#_-]/}"
@@ -27,7 +27,7 @@ valid_ip() {
 
 discover_bridge() {
   local response ip
-  response=$(curl -fsS --max-time 5 https://discovery.meethue.com/ 2>/dev/null | head -c "$MAX_RESPONSE_BYTES" || true)
+  response=$(curl -fsS --max-time 5 https://discovery.meethue.com/ 2>/dev/null | head -c "$MAX_BOOTSTRAP_RESPONSE_BYTES" || true)
   [[ -z "$response" ]] && return 1
   ip=$(python3 -c "
 import json, sys
@@ -44,7 +44,7 @@ except Exception:
 
 fetch_bridge_id() {
   local ip="$1" bridge_id
-  bridge_id=$(CACERT="$CACERT" TARGET_IP="$ip" MAX_BYTES="$MAX_RESPONSE_BYTES" python3 - <<'PY' 2>/dev/null || true
+  bridge_id=$(CACERT="$CACERT" TARGET_IP="$ip" MAX_BYTES="$MAX_BOOTSTRAP_RESPONSE_BYTES" python3 - <<'PY' 2>/dev/null || true
 import json, os, ssl, sys, urllib.request
 cacert = os.environ["CACERT"]
 target = os.environ["TARGET_IP"]
@@ -86,7 +86,7 @@ pair() {
   response=$(curl -fsS --max-time 8 --cacert "$CACERT" \
     --resolve "${bridge_id}:443:${ip}" \
     -X POST -H "Content-Type: application/json" \
-    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://${bridge_id}/api" 2>/dev/null | head -c "$MAX_RESPONSE_BYTES" || true)
+    -d "{\"devicetype\":\"$DEVICETYPE\"}" "https://${bridge_id}/api" 2>/dev/null | head -c "$MAX_BOOTSTRAP_RESPONSE_BYTES" || true)
   username=$(python3 -c "
 import json, sys
 try:
