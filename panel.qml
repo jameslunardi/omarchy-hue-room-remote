@@ -91,14 +91,26 @@ Panel {
     root.activeView = "list"
   }
 
+  // checkStatus() here (not just inside refresh()'s `if (!root.paired)`
+  // branch) matters because root.paired otherwise never gets re-verified
+  // once true -- the unpaired-polling timer below stops once paired, and
+  // nothing else re-reads hue.json's actual on-disk state. Without this, if
+  // credentials are removed (cleanup.sh, a failed re-pair, hand-editing the
+  // file) while the shell keeps running, the panel keeps trusting a stale
+  // "paired" and silently shows an empty room list instead of the
+  // unpaired/pairing screen. Cheap to call unconditionally: it's a local
+  // file read via hue_api.py, no network, and only runs when the user is
+  // actually opening the panel rather than as background polling.
   function open() {
     root.controller.show()
+    root.checkStatus()
     root.resolveDefaultView()
     root.refresh()
   }
 
   function openFromHotkey() {
     root.controller.show()
+    root.checkStatus()
     root.resolveDefaultView()
     root.refresh()
   }
