@@ -125,6 +125,7 @@ function parseGroups(text) {
     seen++
     if (!isValidId(id)) continue
     var group = obj[id]
+    if (!group || typeof group !== "object") continue
     var type = String(group.type || "")
     if (type !== "Room" && type !== "Zone") continue
     var action = group.action || {}
@@ -158,6 +159,7 @@ function parseScenes(text) {
     seen++
     if (!isValidId(id)) continue
     var scene = obj[id]
+    if (!scene || typeof scene !== "object") continue
     var group = scene.group !== undefined && scene.group !== null ? String(scene.group) : ""
     if (!group || !isValidId(group)) continue
     scenes.push({

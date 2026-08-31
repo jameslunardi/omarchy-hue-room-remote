@@ -724,6 +724,7 @@ Panel {
                   spacing: Style.space(8)
 
                   Text {
+                    id: roomIconText
                     text: HueApi.roomIcon(roomRow.modelData.class)
                     color: root.bar.foreground
                     font.family: root.bar.fontFamily
@@ -732,6 +733,14 @@ Panel {
                   }
 
                   Text {
+                    // Row doesn't clip or constrain its children's width --
+                    // `elide` only takes effect once a Text's own `width`
+                    // is smaller than its natural (unwrapped) width, so
+                    // without this explicit width a long room name just
+                    // renders at full size and paints over the toggle/
+                    // reorder/favorite controls to its right instead of
+                    // eliding.
+                    width: Math.max(0, roomRowContent.width - roomIconText.implicitWidth - roomRowContent.spacing)
                     text: roomRow.modelData.name
                     textFormat: Text.PlainText
                     color: root.bar.foreground
@@ -895,18 +904,27 @@ Panel {
         }
       }
 
+      // root.activeRoom can go null between a bridge refresh reassigning
+      // root.visibleRooms and roomLoader's own `active: ... &&
+      // root.activeRoom !== null` binding tearing this component down --
+      // these guards are belt-and-suspenders against that transition
+      // rather than a load-bearing fix (a thrown binding expression
+      // doesn't corrupt QML's binding engine the way a JS exception would
+      // in an imperative handler; it just leaves the property at its last
+      // value until the binding's dependencies change again), but they're
+      // free and remove the theoretical window entirely.
       Toggle {
         width: parent.width
-        label: HueApi.roomIcon(root.activeRoom.class) + "  " + root.activeRoom.name
-        checked: root.activeRoom.on
+        label: root.activeRoom ? (HueApi.roomIcon(root.activeRoom.class) + "  " + root.activeRoom.name) : ""
+        checked: root.activeRoom ? root.activeRoom.on : false
         foreground: root.bar.foreground
         accent: Color.accent
         fontFamily: root.bar.fontFamily
-        onClicked: root.toggleRoom(root.activeRoomId, !root.activeRoom.on)
+        onClicked: if (root.activeRoom) root.toggleRoom(root.activeRoomId, !root.activeRoom.on)
       }
 
       PanelSlider {
-        visible: root.activeRoom.on
+        visible: root.activeRoom ? root.activeRoom.on : false
         width: parent.width - Style.space(24)
         anchors.horizontalCenter: parent.horizontalCenter
         bar: root.bar
@@ -914,7 +932,7 @@ Panel {
         maximum: 254
         integer: true
         step: 10
-        value: root.activeRoom.bri
+        value: root.activeRoom ? root.activeRoom.bri : 254
         onReleased: function(v) { root.setRoomBrightness(root.activeRoomId, v) }
       }
 

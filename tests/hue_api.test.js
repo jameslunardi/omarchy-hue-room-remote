@@ -135,6 +135,19 @@ test("parseGroups drops entries with a malformed group id", () => {
   assert.deepEqual(groups.map(g => g.id), ["1"])
 })
 
+test("parseGroups skips entries whose value is null or a non-object primitive", () => {
+  // A corrupted bridge response or a Hue-compatible emulator could map a
+  // (validly-formatted) id to null/a number/a string instead of an object --
+  // group.type would then throw, previously left completely unguarded.
+  const groups = HueApi.parseGroups(JSON.stringify({
+    "1": { name: "Fine", type: "Room", lights: ["1"] },
+    "2": null,
+    "3": 42,
+    "4": "not an object"
+  }))
+  assert.deepEqual(groups.map(g => g.id), ["1"])
+})
+
 test("parseGroups drops malformed light ids from a group's lightIds", () => {
   const groups = HueApi.parseGroups(JSON.stringify({
     "1": { name: "Room", type: "Room", lights: ["1", "has space", "2"] }
@@ -209,6 +222,16 @@ test("parseScenes drops entries with a malformed scene or group id", () => {
     "s1": { name: "Fine", group: "1" },
     "has space": { name: "Bad scene id", group: "1" },
     "s2": { name: "Bad group id", group: "not valid" }
+  }))
+  assert.deepEqual(scenes.map(s => s.id), ["s1"])
+})
+
+test("parseScenes skips entries whose value is null or a non-object primitive", () => {
+  const scenes = HueApi.parseScenes(JSON.stringify({
+    "s1": { name: "Fine", group: "1" },
+    "s2": null,
+    "s3": 42,
+    "s4": "not an object"
   }))
   assert.deepEqual(scenes.map(s => s.id), ["s1"])
 })

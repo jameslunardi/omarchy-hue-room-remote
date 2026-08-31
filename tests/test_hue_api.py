@@ -583,6 +583,13 @@ class RequestPutTests(unittest.TestCase):
         self.addCleanup(self.cacert_patch.stop)
         hue_api._no_redirect_opener = None
         self.addCleanup(setattr, hue_api, "_no_redirect_opener", None)
+        # _get_opener() (the strict, hostname-verified path used when a
+        # bridgeId is present) caches its result in the same
+        # build-once-lazily pattern as _get_no_redirect_opener -- reset it
+        # too so an earlier test class touching it with a different CACERT
+        # can't leave a stale opener bound to the wrong CA.
+        hue_api._opener = None
+        self.addCleanup(setattr, hue_api, "_opener", None)
 
     def _serve(self, handler_cls):
         httpd = http.server.HTTPServer(("127.0.0.1", 0), handler_cls)
@@ -658,6 +665,29 @@ class RequestPutTests(unittest.TestCase):
         self.assertEqual(captured["method"], "PUT")
         self.assertEqual(captured["content_type"], "application/json")
         self.assertEqual(captured["body"], {"on": True})
+
+    def test_request_verifies_hostname_via_bridge_resolver(self):
+        # Every other test in this class passes bridgeId: "" (see _creds'
+        # own comment), deliberately taking _bridge_url's no-hostname
+        # branch -- meaning _BridgeResolver and the strict,
+        # hostname-verified opener (_get_opener, check_hostname=True) had
+        # zero coverage against a live TLS server. A regression here (a
+        # broken sockaddr tuple, a resolver that silently no-ops, hostname
+        # verification not actually wired in) would still show 100% green.
+        # _bridge_url's hostname branch never embeds a port in the URL
+        # (real bridges are always on 443, which this test can't bind to
+        # without root), so this bypasses it and constructs the request
+        # directly with the test server's real port -- urllib resolves
+        # getaddrinfo("aabbccddeeff0011", real_port), which _BridgeResolver
+        # intercepts and redirects to 127.0.0.1, and _get_opener's
+        # check_hostname=True then verifies the test cert's CN
+        # ("aabbccddeeff0011", see _TEST_CERT_PEM above) against that same
+        # hostname string.
+        port = self._serve(_QuietHandler)
+        req = urllib.request.Request("https://aabbccddeeff0011:%d/api/config" % port)
+        with hue_api._open_bridge_request(req, "aabbccddeeff0011", "127.0.0.1") as r:
+            result = hue_api._read_json_capped(r)
+        self.assertEqual(result, {})
 
     def test_request_refuses_to_follow_a_redirect(self):
         class Handler(http.server.BaseHTTPRequestHandler):
