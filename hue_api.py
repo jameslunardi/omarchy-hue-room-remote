@@ -12,6 +12,7 @@ import ssl
 import stat
 import sys
 import tempfile
+import time
 import urllib.request
 
 def _xdg_state_home():
@@ -132,11 +133,30 @@ def _load_creds():
 _BRIDGE_ID_RE = re.compile(r'[0-9a-f]{16}')
 
 
+def _read_bridge_id(creds):
+    # Single canonical bridgeId validator, shared by _get_status (what
+    # panel.qml's insecureMode warning is driven by) and _bridge_url (what
+    # actually decides whether a request gets hostname verification). These
+    # used to be checked against two different regexes -- a malformed but
+    # alnum id could pass _get_status's old looser check and read as
+    # "verified" in the UI while _bridge_url rejected the same value and
+    # silently fell back to the no-hostname-verification path. Guarding
+    # with isinstance also means an explicit `"bridgeId": null` in a
+    # hand-edited hue.json returns "" here instead of raising (creds.get's
+    # default only applies when the key is absent, not when it's present
+    # with value None).
+    bridge_id = creds.get("bridgeId")
+    if not isinstance(bridge_id, str):
+        return ""
+    bridge_id = bridge_id.strip().lower()
+    return bridge_id if _BRIDGE_ID_RE.fullmatch(bridge_id) else ""
+
+
 def _bridge_url(creds, path):
-    bridge_id = creds.get("bridgeId", "").strip().lower()
+    bridge_id = _read_bridge_id(creds)
     bridge_ip = creds["bridgeIp"]
     username = creds["username"]
-    if bridge_id and _BRIDGE_ID_RE.fullmatch(bridge_id):
+    if bridge_id:
         return ("https://%s/api/%s%s" % (bridge_id, username, path),
                 bridge_id, bridge_ip)
     return ("https://%s/api/%s%s" % (bridge_ip, username, path),
@@ -192,10 +212,7 @@ def _get_status():
     except Exception:
         print(json.dumps({"paired": False}))
         return
-    bridge_id = str(creds.get("bridgeId", "")).strip().lower()
-    if not _ID_RE.fullmatch(bridge_id):
-        bridge_id = ""
-    print(json.dumps({"paired": True, "bridgeId": bridge_id}))
+    print(json.dumps({"paired": True, "bridgeId": _read_bridge_id(creds)}))
 
 
 def _dispatch(op):
@@ -209,43 +226,71 @@ def _dispatch(op):
         _get_status()
         return
 
-    creds = _load_creds()
+    # Every remaining op talks to the bridge. panel.qml's groupsProc/
+    # scenesProc onExited only has the process exit code to tell "the
+    # bridge didn't answer" apart from "the bridge genuinely has no rooms/
+    # scenes" -- so a failure here has to surface as a non-zero exit, not
+    # just a swallowed exception. sys.exit raises SystemExit, which isn't
+    # an Exception subclass, so it passes straight through main()'s outer
+    # `except Exception: pass` instead of being caught by it.
+    try:
+        creds = _load_creds()
 
-    if op == "get-lights":
-        print(json.dumps(_request("/lights", creds)))
-    elif op == "get-groups":
-        print(json.dumps(_request("/groups", creds)))
-    elif op == "get-scenes":
-        print(json.dumps(_request("/scenes", creds)))
-    elif op == "put-light" and len(sys.argv) >= 4:
-        light_id = sys.argv[2]
-        if not re.fullmatch(r'[0-9]+', light_id):
-            return
-        state = json.loads(sys.argv[3])
-        _put(creds, "/lights/%s/state" % light_id, state)
-    elif op == "put-group" and len(sys.argv) >= 4:
-        group_id = sys.argv[2]
-        if not re.fullmatch(r'[0-9]+', group_id):
-            return
-        action = json.loads(sys.argv[3])
-        _put(creds, "/groups/%s/action" % group_id, action)
-    elif op == "verify":
-        lights = _request("/lights", creds)
-        print(len(lights))
+        if op == "get-lights":
+            print(json.dumps(_request("/lights", creds)))
+        elif op == "get-groups":
+            print(json.dumps(_request("/groups", creds)))
+        elif op == "get-scenes":
+            print(json.dumps(_request("/scenes", creds)))
+        elif op == "put-light" and len(sys.argv) >= 4:
+            light_id = sys.argv[2]
+            if not re.fullmatch(r'[0-9]+', light_id):
+                return
+            state = json.loads(sys.argv[3])
+            _put(creds, "/lights/%s/state" % light_id, state)
+        elif op == "put-group" and len(sys.argv) >= 4:
+            group_id = sys.argv[2]
+            if not re.fullmatch(r'[0-9]+', group_id):
+                return
+            action = json.loads(sys.argv[3])
+            _put(creds, "/groups/%s/action" % group_id, action)
+        elif op == "verify":
+            lights = _request("/lights", creds)
+            print(len(lights))
+    except Exception:
+        sys.exit(1)
 
 
-def _atomic_write(path, payload):
-    directory = os.path.dirname(path)
+def _open_checked_dir(directory):
+    # Dir-fd relative, ownership-checked open of a settings directory --
+    # shared by _atomic_write (the file write itself) and _write_order's
+    # lock file. Both need the same guarantee: nothing below gets used
+    # unless this directory was actually created by (or already belongs
+    # to) the current user.
     os.makedirs(directory, exist_ok=True)
     dir_fd = os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW)
+    if os.fstat(dir_fd).st_uid != os.getuid():
+        os.close(dir_fd)
+        raise OSError("settings directory not owned by current user")
+    # chmod via the already-validated descriptor (fchmod), not the path --
+    # os.chmod(path, ...) follows symlinks by default, which would have
+    # silently relocked whatever an attacker-planted symlink pointed at
+    # before O_NOFOLLOW ever got a chance to reject it.
+    os.chmod(dir_fd, 0o700)
+    return dir_fd
+
+
+def _atomic_write(path, payload, dir_fd=None):
+    # dir_fd lets a caller that already holds a checked descriptor for this
+    # directory (_write_order, mid-lock) reuse it instead of _atomic_write
+    # re-deriving and re-validating its own -- an extra open+fstat+fchmod on
+    # every write-order call otherwise, for no benefit since it's the same
+    # directory checked moments earlier under the same lock.
+    directory = os.path.dirname(path)
+    owns_dir_fd = dir_fd is None
+    if owns_dir_fd:
+        dir_fd = _open_checked_dir(directory)
     try:
-        if os.fstat(dir_fd).st_uid != os.getuid():
-            raise OSError("settings directory not owned by current user")
-        # chmod via the already-validated descriptor (fchmod), not the path --
-        # os.chmod(path, ...) follows symlinks by default, which would have
-        # silently relocked whatever an attacker-planted symlink pointed at
-        # before O_NOFOLLOW ever got a chance to reject it.
-        os.chmod(dir_fd, 0o700)
         fd, tmp_path = tempfile.mkstemp(dir=directory)
         tmp_name = os.path.basename(tmp_path)
         try:
@@ -262,7 +307,8 @@ def _atomic_write(path, payload):
                 pass
             raise
     finally:
-        os.close(dir_fd)
+        if owns_dir_fd:
+            os.close(dir_fd)
 
 
 def _write_favorite(body_json):
@@ -303,6 +349,27 @@ def _valid_id_map_of_ids(value):
     return True
 
 
+LOCK_TIMEOUT_SECONDS = 5
+
+
+def _acquire_lock_bounded(lock_fd, timeout=LOCK_TIMEOUT_SECONDS):
+    # Non-blocking flock in a bounded retry loop rather than a plain
+    # blocking LOCK_EX -- a plain blocking flock has the same shape as the
+    # FIFO-hang DoS fixed elsewhere in this file: anything holding this
+    # lock longer than expected (a wedged sibling process, a stray manual
+    # `flock` invocation) would stall the caller, and transitively this
+    # shell instance's whole action queue, forever with no escape.
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+
 def _write_order(body_json):
     body = json.loads(body_json)
     if not isinstance(body, dict):
@@ -316,35 +383,49 @@ def _write_order(body_json):
     if "lastScene" in body and not _valid_id_map_of_ids(body["lastScene"]):
         return
 
-    config_path = os.path.join(CONFIG_HOME, "omarchy/settings/hue-order.json")
+    directory = os.path.join(CONFIG_HOME, "omarchy/settings")
+    config_path = os.path.join(directory, "hue-order.json")
     # Two bar instances (one per monitor) can each issue a write-order call
     # around the same time. _atomic_write makes the write itself atomic, but
     # without a lock spanning the read-modify-write, the second writer's
     # stale read could overwrite the first writer's update. Advisory-lock
     # a sibling file so both instances' calls serialize against each other.
-    lock_path = config_path + ".lock"
-    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
     try:
-        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        dir_fd = _open_checked_dir(directory)
     except OSError:
         return
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
         try:
-            cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
-            if not isinstance(cfg, dict):
-                cfg = {}
-        except Exception:
-            cfg = {}
+            lock_fd = os.open(
+                "hue-order.json.lock",
+                os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
+        except OSError:
+            return
+        try:
+            st = os.fstat(lock_fd)
+            if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid():
+                return
+            if not _acquire_lock_bounded(lock_fd):
+                return
+            try:
+                try:
+                    cfg = _read_local_json_capped(config_path, MAX_ORDER_BYTES)
+                    if not isinstance(cfg, dict):
+                        cfg = {}
+                except Exception:
+                    cfg = {}
 
-        for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
-            if key in body:
-                cfg[key] = body[key]
+                for key in ("roomOrder", "sceneOrder", "lastScene", "hiddenRooms"):
+                    if key in body:
+                        cfg[key] = body[key]
 
-        _atomic_write(config_path, json.dumps(cfg, indent=2) + "\n")
+                _atomic_write(config_path, json.dumps(cfg, indent=2) + "\n", dir_fd=dir_fd)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
+        os.close(dir_fd)
 
 
 if __name__ == "__main__":

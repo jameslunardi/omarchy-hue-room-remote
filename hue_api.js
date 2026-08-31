@@ -65,12 +65,15 @@ function sanitizeIdMap(map) {
 // Deliberately larger than hue_api.py's MAX_RESPONSE_BYTES (1 MiB): Python
 // re-emits bridge data via json.dumps(ensure_ascii=True), which escapes
 // every non-ASCII character as \uXXXX and can expand non-ASCII room/scene
-// names up to ~6x. The real DoS boundary against a malicious bridge is
-// enforced upstream by MAX_RESPONSE_BYTES; this cap only needs to
-// comfortably fit that already-bounded, already-re-encoded output -- it's
-// also reused (via parseJsonObject) to bound reads of the local
-// hue-favorite.json/hue-order.json settings files in panel.qml.
-var MAX_JSON_TEXT_LENGTH = 2 * 1024 * 1024
+// names up to ~6x -- worst case, a malicious bridge packs its 1 MiB
+// allowance entirely with such content, re-encoding to ~6 MiB. The real
+// DoS boundary against a malicious bridge is enforced upstream by
+// MAX_RESPONSE_BYTES; this cap just needs enough headroom above that
+// worst case (with room for JSON structure/quoting overhead) to avoid
+// rejecting legitimate, already-bounded bridge output -- it's also reused
+// (via parseJsonObject) to bound reads of the local hue-favorite.json/
+// hue-order.json settings files in panel.qml.
+var MAX_JSON_TEXT_LENGTH = 8 * 1024 * 1024
 var MAX_PARSED_ITEMS = 500
 var MAX_NAME_LENGTH = 200
 

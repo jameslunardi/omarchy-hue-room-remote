@@ -197,9 +197,9 @@ class WriteOrderTests(unittest.TestCase):
 
         real_atomic_write = hue_api._atomic_write
 
-        def slow_atomic_write(path, payload):
+        def slow_atomic_write(path, payload, **kwargs):
             time.sleep(0.15)
-            real_atomic_write(path, payload)
+            real_atomic_write(path, payload, **kwargs)
 
         def run(body):
             hue_api._write_order(json.dumps(body))
@@ -337,6 +337,15 @@ class BridgeUrlTests(unittest.TestCase):
         url, hostname, ip = hue_api._bridge_url(self.creds("AABBCCDD11223344"), "/lights")
         self.assertEqual(url, "https://aabbccdd11223344/api/u/lights")
         self.assertEqual(hostname, "aabbccdd11223344")
+
+    def test_falls_back_to_ip_when_bridge_id_is_null(self):
+        # Regression test: creds.get("bridgeId", "") only substitutes the
+        # default when the key is *absent* -- an explicit `"bridgeId": null`
+        # (hand-edited/corrupted hue.json) used to reach a bare .strip() call
+        # on None and raise AttributeError before the regex check ever ran.
+        url, hostname, ip = hue_api._bridge_url(self.creds(None), "/lights")
+        self.assertEqual(url, "https://1.2.3.4/api/u/lights")
+        self.assertIsNone(hostname)
 
 
 class ReadLocalJsonCappedTests(unittest.TestCase):
@@ -719,10 +728,11 @@ class GetStatusTests(unittest.TestCase):
     def test_prints_paired_with_bridge_id_when_creds_exist(self):
         with mock.patch.object(
             hue_api, "_load_creds",
-            return_value={"bridgeIp": "1.2.3.4", "bridgeId": "AABBCC", "username": "u"}
+            return_value={"bridgeIp": "1.2.3.4", "bridgeId": "AABBCCDD11223344", "username": "u"}
         ), mock.patch("builtins.print") as mock_print:
             hue_api._get_status()
-            mock_print.assert_called_once_with(json.dumps({"paired": True, "bridgeId": "aabbcc"}))
+            mock_print.assert_called_once_with(
+                json.dumps({"paired": True, "bridgeId": "aabbccdd11223344"}))
 
     def test_prints_unpaired_when_creds_missing(self):
         with mock.patch.object(hue_api, "_load_creds", side_effect=OSError("no file")), \
@@ -744,6 +754,28 @@ class GetStatusTests(unittest.TestCase):
         with mock.patch.object(
             hue_api, "_load_creds",
             return_value={"bridgeIp": "1.2.3.4", "bridgeId": "has space", "username": "u"}
+        ), mock.patch("builtins.print") as mock_print:
+            hue_api._get_status()
+            mock_print.assert_called_once_with(json.dumps({"paired": True, "bridgeId": ""}))
+
+    def test_drops_bridge_id_of_wrong_length_or_non_hex(self):
+        # Regression test: _get_status used to validate bridgeId against a
+        # looser [a-zA-Z0-9_-]{1,40} pattern than _bridge_url's strict
+        # 16-hex-char check, so a 6-char alnum value like this used to pass
+        # here (reading as "verified" to panel.qml's insecureMode banner)
+        # while _bridge_url rejected it and silently fell back to the
+        # no-hostname-verification path. Both now share _read_bridge_id.
+        with mock.patch.object(
+            hue_api, "_load_creds",
+            return_value={"bridgeIp": "1.2.3.4", "bridgeId": "AABBCC", "username": "u"}
+        ), mock.patch("builtins.print") as mock_print:
+            hue_api._get_status()
+            mock_print.assert_called_once_with(json.dumps({"paired": True, "bridgeId": ""}))
+
+    def test_drops_null_bridge_id_without_raising(self):
+        with mock.patch.object(
+            hue_api, "_load_creds",
+            return_value={"bridgeIp": "1.2.3.4", "bridgeId": None, "username": "u"}
         ), mock.patch("builtins.print") as mock_print:
             hue_api._get_status()
             mock_print.assert_called_once_with(json.dumps({"paired": True, "bridgeId": ""}))
@@ -795,6 +827,62 @@ class DispatchValidationTests(unittest.TestCase):
             sys.argv = ["hue_api.py", "put-group", "abc", '{"on": true}']
             hue_api._dispatch("put-group")
             put.assert_not_called()
+
+
+class NetworkOpExitCodeTests(unittest.TestCase):
+    """panel.qml's groupsProc/scenesProc rely on a non-zero process exit
+    code to tell 'the bridge didn't answer' apart from 'the bridge
+    genuinely has no rooms/scenes' -- hue_api.py never called sys.exit
+    anywhere, and main()'s outer try/except swallowed every exception, so
+    this signal never actually fired for a real bridge failure (it always
+    exited 0). These confirm the fix: _dispatch's network ops now turn any
+    exception into sys.exit(1), which still passes untouched through
+    main()'s except-Exception guard since SystemExit isn't an Exception
+    subclass."""
+
+    def test_get_groups_exits_nonzero_on_request_failure(self):
+        with mock.patch.object(hue_api, "_load_creds", return_value={}), \
+             mock.patch.object(hue_api, "_request", side_effect=OSError("network down")):
+            sys.argv = ["hue_api.py", "get-groups"]
+            with self.assertRaises(SystemExit) as ctx:
+                hue_api._dispatch("get-groups")
+            self.assertEqual(ctx.exception.code, 1)
+
+    def test_get_scenes_exits_nonzero_on_missing_creds(self):
+        with mock.patch.object(hue_api, "_load_creds", side_effect=OSError("no file")):
+            sys.argv = ["hue_api.py", "get-scenes"]
+            with self.assertRaises(SystemExit) as ctx:
+                hue_api._dispatch("get-scenes")
+            self.assertEqual(ctx.exception.code, 1)
+
+    def test_verify_exits_nonzero_on_request_failure(self):
+        with mock.patch.object(hue_api, "_load_creds", return_value={}), \
+             mock.patch.object(hue_api, "_request", side_effect=OSError("network down")):
+            sys.argv = ["hue_api.py", "verify"]
+            with self.assertRaises(SystemExit) as ctx:
+                hue_api._dispatch("verify")
+            self.assertEqual(ctx.exception.code, 1)
+
+    def test_get_groups_succeeds_normally(self):
+        # The try/except added around the dispatch body shouldn't change
+        # anything about the success path.
+        with mock.patch.object(hue_api, "_load_creds", return_value={}), \
+             mock.patch.object(hue_api, "_request", return_value={"1": {}}), \
+             mock.patch("builtins.print") as mock_print:
+            sys.argv = ["hue_api.py", "get-groups"]
+            hue_api._dispatch("get-groups")
+            mock_print.assert_called_once_with(json.dumps({"1": {}}))
+
+    def test_system_exit_passes_through_main_uncaught(self):
+        # main() itself has no try/except of its own -- only the
+        # `if __name__ == "__main__":` guard does, and only for bare
+        # Exception, not SystemExit. Confirms the exit code actually
+        # reaches the process instead of being swallowed a layer up.
+        with mock.patch.object(hue_api, "_load_creds", side_effect=OSError("no file")):
+            sys.argv = ["hue_api.py", "get-lights"]
+            with self.assertRaises(SystemExit) as ctx:
+                hue_api.main()
+            self.assertEqual(ctx.exception.code, 1)
 
 
 class MainDispatchTests(unittest.TestCase):

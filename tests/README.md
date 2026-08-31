@@ -33,15 +33,29 @@ pytest/jest/mocha for a plugin this size.
   QML's JS engine).
 - **`hue_api.py`** (`test_hue_api.py`): `_write_favorite`, `_write_order`
   (including its merge-not-clobber behavior across `roomOrder`/
-  `sceneOrder`/`lastScene`/`hiddenRooms`, and a symlink planted at the
-  `.lock` sibling file, asserting the write silently no-ops rather than
-  writing through it), the argument-validation regexes in `_dispatch`,
-  `_get_status` (never leaks `username`/`bridgeIp`), `_read_json_capped`,
-  `_NoRedirectHandler`, `_atomic_write`'s mkstemp+rename symlink
-  regression test (plants a symlink at the target path first, asserts the
-  real file it points at is untouched) and its directory-lockdown test
-  (`chmod 700` on the settings directory), `_read_local_json_capped` — the
-  shared helper behind both `_load_creds` and `_write_order`'s pre-read —
+  `sceneOrder`/`lastScene`/`hiddenRooms`, a symlink planted at the `.lock`
+  sibling file asserting the write silently no-ops rather than writing
+  through it, and its bounded non-blocking `flock` retry serializing two
+  concurrent writers against each other), the argument-validation regexes
+  in `_dispatch`, `_read_bridge_id` — the single canonical `bridgeId`
+  validator shared by `_get_status` and `_bridge_url` — covering a
+  too-short/non-hex value (`GetStatusTests`/`BridgeUrlTests`) and an
+  explicit `null` value (regression coverage for a `.get(key, default)`
+  gotcha: the default only applies when the key is absent, not when it's
+  present as `None`), `NetworkOpExitCodeTests` (a bridge-request failure
+  or missing creds on `get-groups`/`get-scenes`/`verify` now exits the
+  process with code 1 via `sys.exit` rather than being silently swallowed
+  — this is the signal panel.qml's `groupsProc`/`scenesProc` rely on to
+  tell "bridge unreachable" apart from "genuinely no rooms/scenes"; also
+  confirms `SystemExit` passes through `main()`'s outer exception guard
+  uncaught, since it isn't an `Exception` subclass), `_get_status` (never
+  leaks `username`/`bridgeIp`), `_read_json_capped`, `_NoRedirectHandler`,
+  `_atomic_write`'s mkstemp+rename symlink regression test (plants a
+  symlink at the target path first, asserts the real file it points at is
+  untouched) and its directory-lockdown test (`chmod 700` on the settings
+  directory, via the shared `_open_checked_dir` helper also used by
+  `_write_order`'s lock file), `_read_local_json_capped` — the shared
+  helper behind both `_load_creds` and `_write_order`'s pre-read —
   covering symlink/owner/size-cap guards plus a FIFO planted at the target
   path (`os.mkfifo`), asserting it's rejected instead of hanging the call,
   and `_request`/`_put` (`RequestPutTests`) against a real local HTTPS

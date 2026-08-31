@@ -30,6 +30,12 @@ Panel {
   property var sceneOrderByRoom: ({})
   property var hiddenRoomIds: []
   property bool editMode: false
+  // Set by checkStatusThenRefresh() so statusProc's completion handler
+  // runs refresh() itself once the status check actually resolves, rather
+  // than open()/openFromHotkey() calling refresh() synchronously right
+  // after kicking off the (async) status check -- which would run refresh()
+  // against whatever root.paired already was, not the freshly-verified value.
+  property bool refreshAfterStatus: false
 
   readonly property var activeRoom: root.findRoom(root.activeRoomId)
   readonly property int roomCount: root.visibleRooms.length
@@ -91,28 +97,33 @@ Panel {
     root.activeView = "list"
   }
 
-  // checkStatus() here (not just inside refresh()'s `if (!root.paired)`
-  // branch) matters because root.paired otherwise never gets re-verified
-  // once true -- the unpaired-polling timer below stops once paired, and
-  // nothing else re-reads hue.json's actual on-disk state. Without this, if
-  // credentials are removed (cleanup.sh, a failed re-pair, hand-editing the
-  // file) while the shell keeps running, the panel keeps trusting a stale
-  // "paired" and silently shows an empty room list instead of the
-  // unpaired/pairing screen. Cheap to call unconditionally: it's a local
-  // file read via hue_api.py, no network, and only runs when the user is
-  // actually opening the panel rather than as background polling.
+  // checkStatusThenRefresh() here (not just inside refresh()'s
+  // `if (!root.paired)` branch) matters because root.paired otherwise never
+  // gets re-verified once true -- the unpaired-polling timer below stops
+  // once paired, and nothing else re-reads hue.json's actual on-disk state.
+  // Without this, if credentials are removed (cleanup.sh, a failed re-pair,
+  // hand-editing the file) while the shell keeps running, the panel keeps
+  // trusting a stale "paired" and silently shows an empty room list instead
+  // of the unpaired/pairing screen. Cheap to call unconditionally: it's a
+  // local file read via hue_api.py, no network, and only runs when the user
+  // is actually opening the panel rather than as background polling.
+  //
+  // refresh() runs from statusProc's completion handler, not synchronously
+  // here -- checkStatus() only starts an async Process, so calling
+  // refresh() right after it would still see the old root.paired value.
   function open() {
     root.controller.show()
-    root.checkStatus()
     root.resolveDefaultView()
-    root.refresh()
+    root.checkStatusThenRefresh()
   }
 
   function openFromHotkey() {
-    root.controller.show()
+    root.open()
+  }
+
+  function checkStatusThenRefresh() {
+    root.refreshAfterStatus = true
     root.checkStatus()
-    root.resolveDefaultView()
-    root.refresh()
   }
 
   function close() {
@@ -380,7 +391,12 @@ Panel {
         var wasPaired = root.paired
         root.paired = !!(status && status.paired)
         root.bridgeId = (status && status.bridgeId) || ""
-        if (root.paired && !wasPaired) root.refresh()
+        if (root.refreshAfterStatus) {
+          root.refreshAfterStatus = false
+          root.refresh()
+        } else if (root.paired && !wasPaired) {
+          root.refresh()
+        }
       }
     }
     onExited: function(exitCode) {
@@ -391,47 +407,62 @@ Panel {
     }
   }
 
+  // groupsProc/scenesProc make finishFetch's success/failure decision
+  // solely from onExited's exitCode, not from parsing stdout -- hue_api.py
+  // exits non-zero specifically so a real bridge failure (network down,
+  // TLS error, revoked auth) is distinguishable from "the bridge genuinely
+  // has no rooms/scenes" (valid, empty, exit 0). Deciding this any other
+  // way (e.g. treating empty/unparseable stdout as failure) would still be
+  // wrong: it's exactly what a legitimate empty result also looks like.
+  // Reading stdout.text here (a persistent StdioCollector property, not a
+  // signal-only value) rather than relying on onStreamFinished having
+  // already run avoids depending on the relative order the two signals
+  // fire in.
   Process {
     id: groupsProc
     stdout: StdioCollector {
+      id: groupsCollector
       waitForEnd: true
-      onStreamFinished: {
-        var fetched = HueApi.parseGroups(text).filter(function(r) { return r.lightIds.length > 0 })
-        var knownById = {}
-        for (var i = 0; i < root.visibleRooms.length; i++) knownById[root.visibleRooms[i].id] = root.visibleRooms[i]
-        // A group's `action.bri` on the bridge is just its last-sent command,
-        // not a reliable "current brightness" -- refetching it here would
-        // undo whatever the user (or a scene) just set. on/allOn/lightIds
-        // come from real aggregate state (state.any_on etc.) and are safe
-        // to trust from the bridge; bri is only ever updated by our own
-        // optimistic patches.
-        root.visibleRooms = fetched.map(function(r) {
-          var known = knownById[r.id]
-          if (!known) return r
-          var merged = {}
-          for (var k in r) merged[k] = r[k]
-          merged.bri = known.bri
-          return merged
-        })
-        root.finishFetch(true)
-      }
     }
     onExited: function(exitCode) {
-      if (exitCode !== 0) root.finishFetch(false)
+      if (exitCode !== 0) {
+        root.finishFetch(false)
+        return
+      }
+      var fetched = HueApi.parseGroups(groupsCollector.text).filter(function(r) { return r.lightIds.length > 0 })
+      var knownById = {}
+      for (var i = 0; i < root.visibleRooms.length; i++) knownById[root.visibleRooms[i].id] = root.visibleRooms[i]
+      // A group's `action.bri` on the bridge is just its last-sent command,
+      // not a reliable "current brightness" -- refetching it here would
+      // undo whatever the user (or a scene) just set. on/allOn/lightIds
+      // come from real aggregate state (state.any_on etc.) and are safe
+      // to trust from the bridge; bri is only ever updated by our own
+      // optimistic patches.
+      root.visibleRooms = fetched.map(function(r) {
+        var known = knownById[r.id]
+        if (!known) return r
+        var merged = {}
+        for (var k in r) merged[k] = r[k]
+        merged.bri = known.bri
+        return merged
+      })
+      root.finishFetch(true)
     }
   }
 
   Process {
     id: scenesProc
     stdout: StdioCollector {
+      id: scenesCollector
       waitForEnd: true
-      onStreamFinished: {
-        root.scenes = HueApi.parseScenes(text)
-        root.finishFetch(true)
-      }
     }
     onExited: function(exitCode) {
-      if (exitCode !== 0) root.finishFetch(false)
+      if (exitCode !== 0) {
+        root.finishFetch(false)
+        return
+      }
+      root.scenes = HueApi.parseScenes(scenesCollector.text)
+      root.finishFetch(true)
     }
   }
 
